@@ -5,7 +5,6 @@ import (
 	"math"
 	"os"
 	"strings"
-	"syscall"
 
 	ui "github.com/metaspartan/gotui/v5"
 	w "github.com/metaspartan/gotui/v5/widgets"
@@ -56,7 +55,7 @@ func GetCachedTerminalDimensions() (int, int) {
 }
 
 func StderrToLogfile(logfile *os.File) {
-	syscall.Dup2(int(logfile.Fd()), 2)
+	redirectStderr(logfile)
 }
 
 func parseTimeString(timeStr string) float64 {
