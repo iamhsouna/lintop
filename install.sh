@@ -71,6 +71,10 @@ done
 
 need() { command -v "$1" >/dev/null 2>&1; }
 
+WORKDIR=""
+cleanup() { [ -n "$WORKDIR" ] && rm -rf "$WORKDIR"; }
+trap cleanup EXIT
+
 # ---------------------------------------------------------------------------
 # Platform detection
 # ---------------------------------------------------------------------------
@@ -156,8 +160,8 @@ install_from_release() {
   [ -n "$url" ] || return 1
 
   info "Downloading $(basename "$url")"
-  tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir"' EXIT
+  WORKDIR="$(mktemp -d)"
+  tmpdir="$WORKDIR"
 
   if ! curl -fsSL -H 'User-Agent: lintop-installer' "$url" -o "$tmpdir/pkg"; then
     return 1
@@ -188,8 +192,8 @@ install_from_source() {
   need git || die "git is required for --from-source"
   need go  || die "Go is required for --from-source (https://go.dev/dl/)"
   local tmpdir
-  tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir"' EXIT
+  WORKDIR="$(mktemp -d)"
+  tmpdir="$WORKDIR"
   info "Cloning ${REPO} and building from source"
   git clone --depth 1 "https://github.com/${REPO}.git" "$tmpdir/src" >/dev/null 2>&1
   ( cd "$tmpdir/src" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$tmpdir/$BIN" . )
@@ -220,4 +224,4 @@ case ":$PATH:" in
      printf '    export PATH="%s:$PATH"\n' "$PREFIX" ;;
 esac
 
-printf '\nRun it with:  %s\n\n' "${C_BOLD}${BIN}${C_RESET}"
+printf '\nRun it with:  %s\n\n' "$BIN"
