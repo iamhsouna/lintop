@@ -44,6 +44,9 @@ func handleFlag(arg string, idx int, args []string) (int, string, int, bool, boo
 	case "--version", "-v":
 		fmt.Printf(i18n.T("CLI_Version")+"\n", version)
 		os.Exit(0)
+	case "--update", "-u":
+		runSelfUpdate()
+		os.Exit(0)
 	case "--test", "-t":
 		return handleTestFlag(idx, args)
 	case "--testapp", "-a":

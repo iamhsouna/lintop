@@ -26,12 +26,12 @@ func init() {
 }
 
 var (
-	version                                                     = "v2.1.5"
-	cpuGauge, gpuGauge, memoryGauge, aneGauge                   *w.Gauge
+	version                                   = "v2.1.5"
+	cpuGauge, gpuGauge, memoryGauge, aneGauge *w.Gauge
 	// aneWidget / aneHistoryWidget are the drawables placed in layouts. When
 	// no Apple Neural Engine is present they point at blank placeholders so
 	// ANE panels are hidden entirely.
-	aneWidget, aneHistoryWidget ui.Drawable
+	aneWidget, aneHistoryWidget                                 ui.Drawable
 	mainBlock                                                   *ui.Block
 	modelText, PowerChart, NetworkInfo, helpText, infoParagraph *w.Paragraph
 	tbInfoParagraph                                             *w.Paragraph

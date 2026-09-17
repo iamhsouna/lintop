@@ -245,6 +245,7 @@ Usage: lintop [options]
 Options:
   -h, --help              Show this help message
   -v, --version           Show the version of lintop
+  -u, --update            Check for updates and self-update from GitHub
   -i, --interval <ms>     Set the update interval in milliseconds (default: 1000)
   --foreground <color>    Set the UI foreground color (named or hex, e.g., green, #9580FF)
   --bg <color>            Set the UI background color (named or hex, e.g., mocha-base, #22212C)
@@ -270,7 +271,7 @@ Theme File:
   Create theme.json in $XDG_CONFIG_HOME/lintop or ~/.lintop:
   {"foreground": "#9580FF", "background": "#22212C"}
 
-For more information, see https://github.com/metaspartan/mactop written by Carsen Klock.
+For more information, see https://github.com/iamhsouna/lintop
 """
 CLI_Version = "lintop version: %s"
 CLI_DumpingIOReport = "Dumping IOReport channels..."
