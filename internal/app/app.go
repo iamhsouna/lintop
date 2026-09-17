@@ -211,15 +211,6 @@ func setupUI() {
 	aneHistoryChart.ShowRightAxis = true
 	aneHistoryChart.LineColors = []ui.Color{ui.ColorMagenta}
 
-	// Hide all ANE panels unless an Apple Neural Engine is actually present.
-	if hasANE() {
-		aneWidget = aneGauge
-		aneHistoryWidget = aneHistoryChart
-	} else {
-		aneWidget = newBlankWidget()
-		aneHistoryWidget = newBlankWidget()
-	}
-
 	bandwidthHistoryChart = w.NewStepChart()
 	bandwidthHistoryChart.Title = i18n.T("TUI_DRAMBandwidthHistory")
 	bandwidthHistoryChart.ShowAxes = false
@@ -1355,6 +1346,9 @@ func renderBandwidthHistoryChart(readGBs, writeGBs, aneReadGBs, aneWriteGBs floa
 			scaleMax = 8.0
 		}
 
+		anePresent := hasANE()
+		total := readGBs + writeGBs
+
 		if currentConfig.DefaultLayout == LayoutHistorySoC {
 			currentPeak := 0.0
 			if len(visiblePeak) > 0 {
@@ -1362,31 +1356,53 @@ func renderBandwidthHistoryChart(readGBs, writeGBs, aneReadGBs, aneWriteGBs floa
 			}
 
 			// To make Write (red) visible on top:
-			// Total (bottom, violet), Read (blue), Write (red), then the ANE
-			// fabric BW pair (green/yellow) as the top layers.
-			bandwidthHistoryChart.Data = [][]float64{visibleTotal, visibleRead, visibleWrite, visibleAneRead, visibleAneWrite}
-			bandwidthHistoryChart.LineColors = []ui.Color{ui.ColorMagenta, ui.ColorBlue, ui.ColorRed, ui.ColorGreen, ui.ColorYellow}
-			total := readGBs + writeGBs
-			bandwidthHistoryChart.Title = fmt.Sprintf(i18n.T("Metrics_BandwidthHistoryPeak"), readGBs, writeGBs, aneReadGBs, aneWriteGBs, currentPeak)
-			bandwidthHistoryChart.DataLabels = []string{
+			// Total (bottom, violet), Read (blue), Write (red), then—when an
+			// Apple Neural Engine is present—the ANE fabric BW pair (green/
+			// yellow) as the top layers.
+			data := [][]float64{visibleTotal, visibleRead, visibleWrite}
+			colors := []ui.Color{ui.ColorMagenta, ui.ColorBlue, ui.ColorRed}
+			labels := []string{
 				fmt.Sprintf("Tot:%.1f", total),
 				fmt.Sprintf("R:%.1f", readGBs),
 				fmt.Sprintf("W:%.1f", writeGBs),
-				fmt.Sprintf("AR:%.1f", aneReadGBs),
-				fmt.Sprintf("AW:%.1f", aneWriteGBs),
+			}
+			if anePresent {
+				data = append(data, visibleAneRead, visibleAneWrite)
+				colors = append(colors, ui.ColorGreen, ui.ColorYellow)
+				labels = append(labels,
+					fmt.Sprintf("AR:%.1f", aneReadGBs),
+					fmt.Sprintf("AW:%.1f", aneWriteGBs),
+				)
+			}
+			bandwidthHistoryChart.Data = data
+			bandwidthHistoryChart.LineColors = colors
+			bandwidthHistoryChart.DataLabels = labels
+			if anePresent {
+				bandwidthHistoryChart.Title = fmt.Sprintf(i18n.T("Metrics_BandwidthHistoryPeak"), readGBs, writeGBs, aneReadGBs, aneWriteGBs, currentPeak)
+			} else {
+				bandwidthHistoryChart.Title = fmt.Sprintf(i18n.T("Metrics_BandwidthHistoryDetail"), readGBs, writeGBs, total)
 			}
 		} else {
-			bandwidthHistoryChart.Data = [][]float64{visibleRead, visibleWrite, visibleAneRead, visibleAneWrite}
-			bandwidthHistoryChart.LineColors = []ui.Color{ui.ColorCyan, ui.ColorYellow, ui.ColorGreen, ui.ColorMagenta}
-			total := readGBs + writeGBs
-			bandwidthHistoryChart.Title = fmt.Sprintf(i18n.T("Metrics_BandwidthHistoryDetail"), readGBs, writeGBs, total) +
-				fmt.Sprintf(" ANE R:%.1f W:%.1f", aneReadGBs, aneWriteGBs)
-			bandwidthHistoryChart.DataLabels = []string{
+			data := [][]float64{visibleRead, visibleWrite}
+			colors := []ui.Color{ui.ColorCyan, ui.ColorYellow}
+			labels := []string{
 				fmt.Sprintf("R:%.1f", readGBs),
 				fmt.Sprintf("W:%.1f", writeGBs),
-				fmt.Sprintf("AR:%.1f", aneReadGBs),
-				fmt.Sprintf("AW:%.1f", aneWriteGBs),
 			}
+			title := fmt.Sprintf(i18n.T("Metrics_BandwidthHistoryDetail"), readGBs, writeGBs, total)
+			if anePresent {
+				data = append(data, visibleAneRead, visibleAneWrite)
+				colors = append(colors, ui.ColorGreen, ui.ColorMagenta)
+				labels = append(labels,
+					fmt.Sprintf("AR:%.1f", aneReadGBs),
+					fmt.Sprintf("AW:%.1f", aneWriteGBs),
+				)
+				title += fmt.Sprintf(" ANE R:%.1f W:%.1f", aneReadGBs, aneWriteGBs)
+			}
+			bandwidthHistoryChart.Data = data
+			bandwidthHistoryChart.LineColors = colors
+			bandwidthHistoryChart.DataLabels = labels
+			bandwidthHistoryChart.Title = title
 		}
 		bandwidthHistoryChart.MaxVal = scaleMax
 	}
@@ -1443,30 +1459,10 @@ func updateSoCPowerHistory(cpuMetrics CPUMetrics) {
 			maxVal = 0.5
 		}
 
-		// ANE last so its red line draws on top of overlapping series
-		// (at idle all rails sit near 0 and later series overpaint earlier ones).
-		socPowerHistoryChart.Data = [][]float64{visCPU, visGPU, visDRAM, visANE}
-		socPowerHistoryChart.MaxVal = maxVal * 1.15
-		// ANE is omitted from the labels and title entirely when its energy
-		// counter is provably dead (macOS 27+) — there is no reading to show.
-		// The (flat) series itself stays plotted so the chart structure is
-		// stable, and the label/segment return automatically if a future OS
-		// build revives the counter (aneBWLabelMode flips off when watts flow).
-		aneDead := aneBWLabelMode(cpuMetrics)
-		labels := []string{
-			fmt.Sprintf("CPU:%.1f", cpuMetrics.CPUW),
-			fmt.Sprintf("GPU:%.1f", cpuMetrics.GPUW+cpuMetrics.GPUSRAMW),
-			fmt.Sprintf("DRAM:%.1f", cpuMetrics.DRAMW),
-		}
-		if !aneDead {
-			// ANE is the last series, so omitting its label leaves the
-			// CPU/GPU/DRAM labels correctly aligned with their series.
-			labels = append(labels, fmt.Sprintf("ANE:%.1f", cpuMetrics.ANEW))
-		}
-		socPowerHistoryChart.DataLabels = labels
-		// Series order: CPU, GPU, DRAM, ANE (ANE last so its red line draws on
-		// top). Resolve per-component custom theme colors when set instead of
-		// clobbering them with hard-coded defaults every tick.
+		// Series order: CPU, GPU, DRAM, and ANE last (so its red line draws on
+		// top) only when an Apple Neural Engine is present. Resolve
+		// per-component custom theme colors when set instead of clobbering
+		// them with hard-coded defaults every tick.
 		cpuC, gpuC, memC := ui.ColorYellow, ui.ColorGreen, ui.ColorCyan
 		if currentConfig.CustomTheme != nil {
 			fg := GetThemeColorWithLightMode(currentConfig.Theme, IsLightMode)
@@ -1474,7 +1470,24 @@ func updateSoCPowerHistory(cpuMetrics CPUMetrics) {
 			gpuC = resolveCustomColor(currentConfig.CustomTheme.GPU, fg)
 			memC = resolveCustomColor(currentConfig.CustomTheme.Memory, fg)
 		}
-		socPowerHistoryChart.LineColors = []ui.Color{cpuC, gpuC, memC, ui.ColorRed}
+
+		series := [][]float64{visCPU, visGPU, visDRAM}
+		labels := []string{
+			fmt.Sprintf("CPU:%.1f", cpuMetrics.CPUW),
+			fmt.Sprintf("GPU:%.1f", cpuMetrics.GPUW+cpuMetrics.GPUSRAMW),
+			fmt.Sprintf("DRAM:%.1f", cpuMetrics.DRAMW),
+		}
+		colors := []ui.Color{cpuC, gpuC, memC}
+		aneDead := !hasANE() || aneBWLabelMode(cpuMetrics)
+		if !aneDead {
+			series = append(series, visANE)
+			labels = append(labels, fmt.Sprintf("ANE:%.1f", cpuMetrics.ANEW))
+			colors = append(colors, ui.ColorRed)
+		}
+		socPowerHistoryChart.Data = series
+		socPowerHistoryChart.DataLabels = labels
+		socPowerHistoryChart.LineColors = colors
+		socPowerHistoryChart.MaxVal = maxVal * 1.15
 
 		totalPower := cpuMetrics.CPUW + cpuMetrics.GPUW + cpuMetrics.GPUSRAMW + cpuMetrics.ANEW + cpuMetrics.DRAMW
 		if aneDead {

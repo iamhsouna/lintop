@@ -34,6 +34,52 @@ const (
 
 var layoutOrder = []string{LayoutDefault, LayoutAlternative, LayoutAlternativeFull, LayoutVertical, LayoutCompact, LayoutDashboard, LayoutGaugesOnly, LayoutGPUFocus, LayoutCPUFocus, LayoutGPUMemory, LayoutMultiGPU, LayoutNetworkIO, LayoutSmall, LayoutTiny, LayoutMicro, LayoutNano, LayoutPico, LayoutHistory, LayoutHistoryFull, LayoutHistorySoC, LayoutFan}
 
+// rowSpec pairs a layout weight with a widget for weighted row construction.
+type rowSpec struct {
+	weight float64
+	widget any
+}
+
+// buildWeightedRows builds rows whose ratios are normalized to sum to 1.
+// This lets layouts drop the ANE row without leaving empty space.
+func buildWeightedRows(specs ...rowSpec) []any {
+	total := 0.0
+	for _, s := range specs {
+		total += s.weight
+	}
+	if total <= 0 {
+		total = 1
+	}
+	rows := make([]any, 0, len(specs))
+	for _, s := range specs {
+		rows = append(rows, ui.NewRow(s.weight/total, s.widget))
+	}
+	return rows
+}
+
+// equalCols returns equally-sized columns for the given widgets.
+func equalCols(items ...any) []any {
+	if len(items) == 0 {
+		return nil
+	}
+	r := 1.0 / float64(len(items))
+	cols := make([]any, 0, len(items))
+	for _, it := range items {
+		cols = append(cols, ui.NewCol(r, it))
+	}
+	return cols
+}
+
+// gaugeItems returns the standard gauge set, appending the ANE gauge only when
+// an Apple Neural Engine is actually present.
+func gaugeItems(base ...any) []any {
+	items := append([]any{}, base...)
+	if hasANE() {
+		items = append(items, aneGauge)
+	}
+	return items
+}
+
 func setupGrid() {
 	totalLayouts = len(layoutOrder)
 	for i, layout := range layoutOrder {
@@ -151,16 +197,21 @@ func setLayoutGrid(layoutName string) {
 			),
 		)
 	case LayoutVertical:
+		leftSpecs := []rowSpec{
+			{1.0, cpuGauge},
+			{1.0, gpuGauge},
+		}
+		if hasANE() {
+			leftSpecs = append(leftSpecs, rowSpec{1.0, aneGauge})
+		}
+		leftSpecs = append(leftSpecs,
+			rowSpec{1.5, memoryGauge},
+			rowSpec{1.5, NetworkInfo},
+			rowSpec{2.0, modelText},
+		)
 		grid.Set(
 			ui.NewRow(1.0,
-				ui.NewCol(0.4,
-					ui.NewRow(1.0/8, cpuGauge),
-					ui.NewRow(1.0/8, gpuGauge),
-					ui.NewRow(1.0/8, aneWidget),
-					ui.NewRow(1.5/8, memoryGauge),
-					ui.NewRow(1.5/8, NetworkInfo),
-					ui.NewRow(2.0/8, modelText),
-				),
+				ui.NewCol(0.4, buildWeightedRows(leftSpecs...)...),
 				ui.NewCol(0.6,
 					ui.NewRow(3.0/4, processList),
 					ui.NewRow(1.0/4,
@@ -172,12 +223,7 @@ func setLayoutGrid(layoutName string) {
 		)
 	case LayoutCompact:
 		grid.Set(
-			ui.NewRow(2.0/8,
-				ui.NewCol(1.0/4, cpuGauge),
-				ui.NewCol(1.0/4, gpuGauge),
-				ui.NewCol(1.0/4, memoryGauge),
-				ui.NewCol(1.0/4, aneWidget),
-			),
+			ui.NewRow(2.0/8, equalCols(gaugeItems(cpuGauge, gpuGauge, memoryGauge)...)...),
 			ui.NewRow(2.0/8,
 				ui.NewCol(1.0/3, modelText),
 				ui.NewCol(1.0/3, NetworkInfo),
@@ -189,12 +235,7 @@ func setLayoutGrid(layoutName string) {
 		)
 	case LayoutDashboard:
 		grid.Set(
-			ui.NewRow(1.0/4,
-				ui.NewCol(1.0/4, cpuGauge),
-				ui.NewCol(1.0/4, gpuGauge),
-				ui.NewCol(1.0/4, memoryGauge),
-				ui.NewCol(1.0/4, aneWidget),
-			),
+			ui.NewRow(1.0/4, equalCols(gaugeItems(cpuGauge, gpuGauge, memoryGauge)...)...),
 			ui.NewRow(1.0/4,
 				ui.NewCol(1.0/2, sparklineGroup),
 				ui.NewCol(1.0/2, gpuSparklineGroup),
@@ -204,15 +245,21 @@ func setLayoutGrid(layoutName string) {
 			),
 		)
 	case LayoutGaugesOnly:
+		var gpuRow any
+		if hasANE() {
+			gpuRow = ui.NewRow(1.0/3,
+				ui.NewCol(1.0/2, gpuGauge),
+				ui.NewCol(1.0/2, aneGauge),
+			)
+		} else {
+			gpuRow = ui.NewRow(1.0/3, ui.NewCol(1.0, gpuGauge))
+		}
 		grid.Set(
 			ui.NewRow(1.0/3,
 				ui.NewCol(1.0/2, cpuGauge),
 				ui.NewCol(1.0/2, memoryGauge),
 			),
-			ui.NewRow(1.0/3,
-				ui.NewCol(1.0/2, gpuGauge),
-				ui.NewCol(1.0/2, aneWidget),
-			),
+			gpuRow,
 			ui.NewRow(1.0/3,
 				ui.NewCol(1.0/2, gpuSparklineGroup),
 				ui.NewCol(1.0/2, sparklineGroup),
@@ -272,14 +319,17 @@ func setLayoutGrid(layoutName string) {
 			),
 		)
 	case LayoutSmall:
+		specs := []rowSpec{
+			{1.0, cpuGauge},
+			{1.0, gpuGauge},
+			{1.0, memoryGauge},
+		}
+		if hasANE() {
+			specs = append(specs, rowSpec{1.0, aneGauge})
+		}
 		grid.Set(
 			ui.NewRow(1.0,
-				ui.NewCol(1.0,
-					ui.NewRow(1.0/4, cpuGauge),
-					ui.NewRow(1.0/4, gpuGauge),
-					ui.NewRow(1.0/4, memoryGauge),
-					ui.NewRow(1.0/4, aneWidget),
-				),
+				ui.NewCol(1.0, buildWeightedRows(specs...)...),
 			),
 		)
 	case LayoutTiny, LayoutMicro, LayoutNano, LayoutPico:
@@ -293,19 +343,22 @@ func setLayoutGrid(layoutName string) {
 	case LayoutHistorySoC:
 		setHistorySoCLayoutGrid()
 	default: // LayoutDefault
+		contentRow := ui.NewRow(1.0,
+			ui.NewCol(1.0/2, PowerChart),
+			ui.NewCol(1.0/2, sparklineGroup),
+		)
+		leftSpecs := []rowSpec{}
+		if hasANE() {
+			leftSpecs = append(leftSpecs, rowSpec{1.0, aneGauge})
+		}
+		leftSpecs = append(leftSpecs, rowSpec{1.0, contentRow})
 		grid.Set(
 			ui.NewRow(1.0/4,
 				ui.NewCol(1.0/2, cpuGauge),
 				ui.NewCol(1.0/2, gpuGauge),
 			),
 			ui.NewRow(2.0/4,
-				ui.NewCol(1.0/2,
-					ui.NewRow(1.0/2, aneWidget),
-					ui.NewRow(1.0/2,
-						ui.NewCol(1.0/2, PowerChart),
-						ui.NewCol(1.0/2, sparklineGroup),
-					),
-				),
+				ui.NewCol(1.0/2, buildWeightedRows(leftSpecs...)...),
 				ui.NewCol(1.0/2,
 					ui.NewRow(1.0/2, memoryGauge),
 					ui.NewRow(1.0/2,
@@ -325,15 +378,13 @@ func setCompactLayoutGrid(layoutName string) {
 	switch layoutName {
 	case LayoutTiny:
 		// Compact vertical with all key metrics + mini process list
+		row2 := []any{memoryGauge}
+		if hasANE() {
+			row2 = append(row2, aneGauge)
+		}
 		grid.Set(
-			ui.NewRow(1.0/4,
-				ui.NewCol(1.0/2, cpuGauge),
-				ui.NewCol(1.0/2, gpuGauge),
-			),
-			ui.NewRow(1.0/4,
-				ui.NewCol(1.0/2, memoryGauge),
-				ui.NewCol(1.0/2, aneWidget),
-			),
+			ui.NewRow(1.0/4, equalCols(cpuGauge, gpuGauge)...),
+			ui.NewRow(1.0/4, equalCols(row2...)...),
 			ui.NewRow(1.0/4,
 				ui.NewCol(1.0/2, PowerChart),
 				ui.NewCol(1.0/2, NetworkInfo),
@@ -344,15 +395,13 @@ func setCompactLayoutGrid(layoutName string) {
 		)
 	case LayoutMicro:
 		// Ultra-compact gauges + sparklines, no process list
+		row2 := []any{memoryGauge}
+		if hasANE() {
+			row2 = append(row2, aneGauge)
+		}
 		grid.Set(
-			ui.NewRow(1.0/4,
-				ui.NewCol(1.0/2, cpuGauge),
-				ui.NewCol(1.0/2, gpuGauge),
-			),
-			ui.NewRow(1.0/4,
-				ui.NewCol(1.0/2, memoryGauge),
-				ui.NewCol(1.0/2, aneWidget),
-			),
+			ui.NewRow(1.0/4, equalCols(cpuGauge, gpuGauge)...),
+			ui.NewRow(1.0/4, equalCols(row2...)...),
 			ui.NewRow(1.0/4,
 				ui.NewCol(1.0/2, sparklineGroup),
 				ui.NewCol(1.0/2, gpuSparklineGroup),
@@ -364,6 +413,10 @@ func setCompactLayoutGrid(layoutName string) {
 		)
 	case LayoutNano:
 		// Dense info panel + gauges + mini process list
+		row3 := []any{PowerChart, NetworkInfo}
+		if hasANE() {
+			row3 = append([]any{aneGauge}, row3...)
+		}
 		grid.Set(
 			ui.NewRow(1.0/4,
 				ui.NewCol(1.0, cpuGauge),
@@ -372,11 +425,7 @@ func setCompactLayoutGrid(layoutName string) {
 				ui.NewCol(1.0/2, gpuGauge),
 				ui.NewCol(1.0/2, memoryGauge),
 			),
-			ui.NewRow(1.0/4,
-				ui.NewCol(1.0/3, aneWidget),
-				ui.NewCol(1.0/3, PowerChart),
-				ui.NewCol(1.0/3, NetworkInfo),
-			),
+			ui.NewRow(1.0/4, equalCols(row3...)...),
 			ui.NewRow(1.0/4,
 				ui.NewCol(1.0, processList),
 			),
@@ -384,12 +433,7 @@ func setCompactLayoutGrid(layoutName string) {
 	case LayoutPico:
 		// Maximum density with 2x2 gauges + sparklines
 		grid.Set(
-			ui.NewRow(1.0/3,
-				ui.NewCol(1.0/4, cpuGauge),
-				ui.NewCol(1.0/4, gpuGauge),
-				ui.NewCol(1.0/4, memoryGauge),
-				ui.NewCol(1.0/4, aneWidget),
-			),
+			ui.NewRow(1.0/3, equalCols(gaugeItems(cpuGauge, gpuGauge, memoryGauge)...)...),
 			ui.NewRow(1.0/3,
 				ui.NewCol(1.0/2, sparklineGroup),
 				ui.NewCol(1.0/2, gpuSparklineGroup),
@@ -517,15 +561,25 @@ func setHistorySoCLayoutGrid() {
 	// Row 3 (bottom): Memory BW (left) | Memory Used | SSD Read
 	// Rows scaled ×1.25 from the former 0.24/0.24/0.32 to reclaim the height
 	// the process list used to occupy.
+	// Row 2 holds the ANE history chart only when an Apple Neural Engine is
+	// present; otherwise the SoC power chart takes the full width.
+	var row2 any
+	if hasANE() {
+		row2 = ui.NewRow(0.30,
+			ui.NewCol(1.0/2, aneHistoryChart),
+			ui.NewCol(1.0/2, socPowerHistoryChart),
+		)
+	} else {
+		row2 = ui.NewRow(0.30,
+			ui.NewCol(1.0, socPowerHistoryChart),
+		)
+	}
 	grid.Set(
 		ui.NewRow(0.30,
 			ui.NewCol(1.0/2, cpuHistoryChart),
 			ui.NewCol(1.0/2, gpuHistoryChart),
 		),
-		ui.NewRow(0.30,
-			ui.NewCol(1.0/2, aneHistoryWidget),
-			ui.NewCol(1.0/2, socPowerHistoryChart),
-		),
+		row2,
 		ui.NewRow(0.40,
 			ui.NewCol(1.0/3, bandwidthHistoryChart), // Memory BW leftmost
 			ui.NewCol(1.0/3, memoryHistoryChart),

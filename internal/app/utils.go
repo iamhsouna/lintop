@@ -7,17 +7,7 @@ import (
 	"strings"
 
 	ui "github.com/metaspartan/gotui/v5"
-	w "github.com/metaspartan/gotui/v5/widgets"
 )
-
-// newBlankWidget returns an invisible drawable used to hide panels on hardware
-// that does not support them (e.g. the ANE on Linux without Apple Silicon).
-func newBlankWidget() ui.Drawable {
-	p := w.NewParagraph()
-	p.Border = false
-	p.Text = ""
-	return p
-}
 
 // firstEnv returns the first non-empty environment variable from names.
 func firstEnv(names ...string) string {

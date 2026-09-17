@@ -26,12 +26,8 @@ func init() {
 }
 
 var (
-	version                                   = "v2.2.0"
+	version                                   = "v2.2.1"
 	cpuGauge, gpuGauge, memoryGauge, aneGauge *w.Gauge
-	// aneWidget / aneHistoryWidget are the drawables placed in layouts. When
-	// no Apple Neural Engine is present they point at blank placeholders so
-	// ANE panels are hidden entirely.
-	aneWidget, aneHistoryWidget ui.Drawable
 	// selectedGPU chooses which GPU the primary gauges track. multiGpuGauges
 	// holds one gauge per detected GPU for the multi_gpu layout.
 	selectedGPU    int
