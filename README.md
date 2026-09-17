@@ -336,7 +336,8 @@ hardware; they appear automatically on macOS or on Apple Silicon running Linux (
 
 - [ ] AMD (ROCm/`rocm-smi`) and Intel (`intel_gpu_top`) GPU support
 - [ ] Per-GPU selection and multi-GPU TUI panes
-- [ ] Prebuilt release binaries and install script automation (in progress)
+- [x] Prebuilt release binaries and one-line installer
+- [x] Self-update (`lintop --update`)
 - [ ] Config profiles and saved layouts
 - [ ] More languages and themes
 
