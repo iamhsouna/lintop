@@ -41,6 +41,17 @@ var themeOrder = []string{
 	"mosse",
 	"sand",
 	"copper",
+	"nord",
+	"gruvbox",
+	"dracula",
+	"tokyonight",
+	"onedark",
+	"monokai",
+	"solarized",
+	"everforest",
+	"kanagawa",
+	"rosepine",
+	"matrix",
 	"1977", // Special theme without a single color
 	"frappe",
 	"macchiato",
@@ -49,39 +60,50 @@ var themeOrder = []string{
 
 // colorMap maps theme names to their primary UI color
 var colorMap = map[string]ui.Color{
-	"green":     ui.ColorGreen,
-	"red":       ui.ColorRed,
-	"blue":      ui.ColorBlue,
-	"skyblue":   ui.ColorSkyBlue,
-	"magenta":   ui.ColorMagenta,
-	"yellow":    ui.ColorYellow,
-	"gold":      ui.ColorGold,
-	"silver":    ui.ColorSilver,
-	"white":     ui.ColorWhite,
-	"lime":      ui.ColorLime,
-	"orange":    ui.ColorOrange,
-	"violet":    ui.ColorViolet,
-	"pink":      ui.ColorPink,
-	"coffee":    ui.NewRGBColor(193, 165, 137),
-	"mint":      ui.NewRGBColor(152, 255, 152),
-	"coral":     ui.NewRGBColor(255, 127, 80),
-	"babyblue":  ui.NewRGBColor(137, 207, 240),
-	"indigo":    ui.NewRGBColor(75, 0, 130),
-	"teal":      ui.NewRGBColor(0, 128, 128),
-	"lavender":  ui.NewRGBColor(186, 187, 241),
-	"rose":      ui.NewRGBColor(255, 0, 127),
-	"cyan":      ui.NewRGBColor(0, 255, 255),   // Bright cyan - electric/neon
-	"amber":     ui.NewRGBColor(255, 191, 0),   // Warm amber - golden yellow
-	"crimson":   ui.NewRGBColor(220, 20, 60),   // Deep crimson red
-	"aqua":      ui.NewRGBColor(0, 255, 200),   // Bright aqua/turquoise
-	"peach":     ui.NewRGBColor(255, 180, 128), // Soft peach
-	"caramel":   ui.NewRGBColor(255, 195, 128), // Warm caramel brown
-	"mosse":     ui.NewRGBColor(173, 153, 113), // Olive mosse brown
-	"sand":      ui.NewRGBColor(237, 201, 175), // Warm sandy beige
-	"copper":    ui.NewRGBColor(184, 115, 51),  // Rich copper bronze
-	"frappe":    CatppuccinFrappe.Mauve,
-	"macchiato": CatppuccinMacchiato.Sapphire,
-	"mocha":     CatppuccinMocha.Peach,
+	"green":      ui.ColorGreen,
+	"red":        ui.ColorRed,
+	"blue":       ui.ColorBlue,
+	"skyblue":    ui.ColorSkyBlue,
+	"magenta":    ui.ColorMagenta,
+	"yellow":     ui.ColorYellow,
+	"gold":       ui.ColorGold,
+	"silver":     ui.ColorSilver,
+	"white":      ui.ColorWhite,
+	"lime":       ui.ColorLime,
+	"orange":     ui.ColorOrange,
+	"violet":     ui.ColorViolet,
+	"pink":       ui.ColorPink,
+	"coffee":     ui.NewRGBColor(193, 165, 137),
+	"mint":       ui.NewRGBColor(152, 255, 152),
+	"coral":      ui.NewRGBColor(255, 127, 80),
+	"babyblue":   ui.NewRGBColor(137, 207, 240),
+	"indigo":     ui.NewRGBColor(75, 0, 130),
+	"teal":       ui.NewRGBColor(0, 128, 128),
+	"lavender":   ui.NewRGBColor(186, 187, 241),
+	"rose":       ui.NewRGBColor(255, 0, 127),
+	"cyan":       ui.NewRGBColor(0, 255, 255),   // Bright cyan - electric/neon
+	"amber":      ui.NewRGBColor(255, 191, 0),   // Warm amber - golden yellow
+	"crimson":    ui.NewRGBColor(220, 20, 60),   // Deep crimson red
+	"aqua":       ui.NewRGBColor(0, 255, 200),   // Bright aqua/turquoise
+	"peach":      ui.NewRGBColor(255, 180, 128), // Soft peach
+	"caramel":    ui.NewRGBColor(255, 195, 128), // Warm caramel brown
+	"mosse":      ui.NewRGBColor(173, 153, 113), // Olive mosse brown
+	"sand":       ui.NewRGBColor(237, 201, 175), // Warm sandy beige
+	"copper":     ui.NewRGBColor(184, 115, 51),  // Rich copper bronze
+	"nord":       ui.NewRGBColor(136, 192, 208), // Nord frost cyan
+	"gruvbox":    ui.NewRGBColor(250, 189, 47),  // Gruvbox yellow
+	"dracula":    ui.NewRGBColor(189, 147, 249), // Dracula purple
+	"tokyonight": ui.NewRGBColor(122, 162, 247), // Tokyo Night blue
+	"onedark":    ui.NewRGBColor(97, 175, 239),  // One Dark blue
+	"monokai":    ui.NewRGBColor(166, 226, 46),  // Monokai green
+	"solarized":  ui.NewRGBColor(38, 139, 210),  // Solarized blue
+	"everforest": ui.NewRGBColor(167, 192, 128), // Everforest green
+	"kanagawa":   ui.NewRGBColor(126, 156, 216), // Kanagawa wave blue
+	"rosepine":   ui.NewRGBColor(235, 188, 186), // Rosé Pine rose
+	"matrix":     ui.NewRGBColor(0, 255, 65),    // Matrix neon green
+	"frappe":     CatppuccinFrappe.Mauve,
+	"macchiato":  CatppuccinMacchiato.Sapphire,
+	"mocha":      CatppuccinMocha.Peach,
 }
 
 // bgColorOrder defines the order backgrounds cycle through with 'b' key
@@ -189,6 +211,14 @@ func update1977GaugeColors() {
 	styleGauge(gpuGauge, ui.ColorMagenta, SecondaryTextColor)
 	styleGauge(memoryGauge, ui.ColorBlue, SecondaryTextColor)
 	styleGauge(aneGauge, ui.ColorRed, SecondaryTextColor)
+	styleMultiGPUGauges(ui.ColorMagenta, SecondaryTextColor)
+}
+
+// styleMultiGPUGauges applies a theme color to every per-GPU pane.
+func styleMultiGPUGauges(color, labelColor ui.Color) {
+	for _, g := range multiGpuGauges {
+		styleGauge(g, color, labelColor)
+	}
 }
 
 func applyThemeToGauges(color ui.Color) {
@@ -196,6 +226,7 @@ func applyThemeToGauges(color ui.Color) {
 	styleGauge(gpuGauge, color, SecondaryTextColor)
 	styleGauge(memoryGauge, color, SecondaryTextColor)
 	styleGauge(aneGauge, color, SecondaryTextColor)
+	styleMultiGPUGauges(color, SecondaryTextColor)
 }
 
 func applyCatppuccinThemeToGauges(palette *CatppuccinPalette) {
@@ -203,6 +234,7 @@ func applyCatppuccinThemeToGauges(palette *CatppuccinPalette) {
 	styleGauge(gpuGauge, palette.Blue, palette.Subtext0)      // GPU = Blue (info/secondary compute)
 	styleGauge(memoryGauge, palette.Yellow, palette.Subtext0) // Memory = Yellow (resource usage)
 	styleGauge(aneGauge, palette.Lavender, palette.Subtext0)  // ANE = Lavender (AI/neural)
+	styleMultiGPUGauges(palette.Blue, palette.Subtext0)
 }
 
 // resolveCustomColor resolves a per-component hex color, falling back to foregroundColor.
@@ -221,6 +253,7 @@ func applyCustomGaugeColors(theme *CustomThemeConfig, fgColor ui.Color) {
 	styleGauge(gpuGauge, resolveCustomColor(theme.GPU, fgColor), SecondaryTextColor)
 	styleGauge(memoryGauge, resolveCustomColor(theme.Memory, fgColor), SecondaryTextColor)
 	styleGauge(aneGauge, resolveCustomColor(theme.ANE, fgColor), SecondaryTextColor)
+	styleMultiGPUGauges(resolveCustomColor(theme.GPU, fgColor), SecondaryTextColor)
 }
 
 // applyCustomWidgetColors applies per-component widget colors from custom theme.
@@ -531,24 +564,35 @@ func GetThemeColorWithLightMode(colorName string, lightMode bool) ui.Color {
 
 // themeHexMap maps theme names to their hex color strings for text rendering
 var themeHexMap = map[string]string{
-	"coffee":   "#C1A589",
-	"mint":     "#98FF98",
-	"babyblue": "#89CFF0",
-	"indigo":   "#4B0082",
-	"teal":     "#008080",
-	"coral":    "#FF7F50",
-	"lavender": "#BABBF1",
-	"rose":     "#FF007F",
-	"cyan":     "#00FFFF",
-	"amber":    "#FFBF00",
-	"crimson":  "#DC143C",
-	"aqua":     "#00FFC8",
-	"peach":    "#FFB480",
-	"caramel":  "#FFC380",
-	"mosse":    "#AD9971",
-	"sand":     "#EDC9AF",
-	"copper":   "#B87333",
-	"1977":     "green",
+	"coffee":     "#C1A589",
+	"mint":       "#98FF98",
+	"babyblue":   "#89CFF0",
+	"indigo":     "#4B0082",
+	"teal":       "#008080",
+	"coral":      "#FF7F50",
+	"lavender":   "#BABBF1",
+	"rose":       "#FF007F",
+	"cyan":       "#00FFFF",
+	"amber":      "#FFBF00",
+	"crimson":    "#DC143C",
+	"aqua":       "#00FFC8",
+	"peach":      "#FFB480",
+	"caramel":    "#FFC380",
+	"mosse":      "#AD9971",
+	"sand":       "#EDC9AF",
+	"copper":     "#B87333",
+	"nord":       "#88C0D0",
+	"gruvbox":    "#FABD2F",
+	"dracula":    "#BD93F9",
+	"tokyonight": "#7AA2F7",
+	"onedark":    "#61AFEF",
+	"monokai":    "#A6E22E",
+	"solarized":  "#268BD2",
+	"everforest": "#A7C080",
+	"kanagawa":   "#7E9CD8",
+	"rosepine":   "#EBBCBA",
+	"matrix":     "#00FF41",
+	"1977":       "green",
 }
 
 func resolveThemeColorString(theme string) string {

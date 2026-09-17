@@ -165,6 +165,7 @@ type SocMetrics struct {
 	ANEActive       float64      `json:"ane_active"`
 	Fans            []FanInfo    `json:"-"`
 	TempSensors     []TempSensor `json:"-"`
+	PerGPU          []GPUSample  `json:"per_gpu,omitempty"`
 }
 
 func initSocMetrics() error {

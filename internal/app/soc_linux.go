@@ -60,6 +60,7 @@ type SocMetrics struct {
 	ANEActive       float64      `json:"ane_active"`
 	Fans            []FanInfo    `json:"-"`
 	TempSensors     []TempSensor `json:"-"`
+	PerGPU          []GPUSample  `json:"per_gpu,omitempty"`
 }
 
 // CPU energy state for RAPL-based package power estimation.
@@ -290,27 +291,45 @@ func sampleSocMetrics(durationMs int) SocMetrics {
 	cpuWatts := readRAPLPowerWatts()
 	m.CPUPower = cpuWatts
 
-	gpus := queryNvidiaGPUs()
-	if len(gpus) > 0 {
-		g := gpus[0]
+	gpus := queryAllGPUs()
+	m.PerGPU = make([]GPUSample, 0, len(gpus))
+	for _, g := range gpus {
+		m.PerGPU = append(m.PerGPU, GPUSample{
+			Index:       g.Index,
+			Vendor:      g.Vendor,
+			Name:        g.Name,
+			UtilPercent: g.UtilPct,
+			MemUsedMB:   g.MemUsedMB,
+			MemTotalMB:  g.MemTotalMB,
+			TempC:       g.TempC,
+			PowerW:      g.PowerW,
+			FreqMHz:     g.FreqMHz,
+			MaxFreqMHz:  g.MaxFreqMHz,
+			FanPercent:  g.FanPct,
+		})
+		// Surface each GPU temperature through the same sensor list the fan /
+		// thermals layout renders.
+		if g.TempC > 0 {
+			name := "GPU"
+			if len(gpus) > 1 {
+				name = fmt.Sprintf("%s %s #%d", gpuVendorLabel(g), "GPU", g.Index)
+			}
+			m.TempSensors = append(m.TempSensors, TempSensor{
+				Key:   fmt.Sprintf("TR%dP", g.Index),
+				Name:  name,
+				Value: g.TempC,
+			})
+		}
+	}
+
+	if g, ok := primaryGPU(); ok {
 		m.GPUActive = g.UtilPct
 		m.GPUFreqMHz = int32(g.FreqMHz)
 		m.GPUTemp = float32(g.TempC)
 		m.GPUPower = g.PowerW
-
-		// Surface the GPU temperature through the same sensor list the fan /
-		// thermals layout renders.
-		m.TempSensors = append(m.TempSensors, TempSensor{
-			Key:   "TR0P",
-			Name:  "GPU",
-			Value: g.TempC,
-		})
 	}
 
-	var gpuWatts float64
-	for _, g := range gpus {
-		gpuWatts += g.PowerW
-	}
+	gpuWatts := totalGPUPowerWatts()
 	m.TotalPower = cpuWatts + gpuWatts + m.ANEPower + m.DRAMPower
 	m.SystemPower = m.TotalPower
 

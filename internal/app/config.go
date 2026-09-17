@@ -2,8 +2,10 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +94,135 @@ type AppConfig struct {
 	CustomTheme   *CustomThemeConfig `json:"custom_theme,omitempty"`
 	MenuBar       *MenuBarConfig     `json:"menubar,omitempty"`
 	Overlay       *OverlayConfig     `json:"overlay,omitempty"`
+	Profiles      map[string]Profile `json:"profiles,omitempty"`
+}
+
+// Profile is a named, saved combination of layout, theme, background, refresh
+// interval and process sort — i.e. a saveable "workspace".
+type Profile struct {
+	DefaultLayout string `json:"default_layout,omitempty"`
+	Theme         string `json:"theme,omitempty"`
+	Background    string `json:"background,omitempty"`
+	Interval      int    `json:"interval,omitempty"`
+	SortColumn    *int   `json:"sort_column,omitempty"`
+	SortReverse   *bool  `json:"sort_reverse,omitempty"`
+}
+
+// applyProfile overlays a saved profile onto the current configuration.
+// Returns false when the profile does not exist.
+func applyProfile(name string) bool {
+	p, ok := currentConfig.Profiles[name]
+	if !ok {
+		return false
+	}
+	if p.DefaultLayout != "" {
+		currentConfig.DefaultLayout = p.DefaultLayout
+	}
+	if p.Theme != "" {
+		currentConfig.Theme = p.Theme
+	}
+	if p.Background != "" {
+		currentConfig.Background = p.Background
+	}
+	if p.Interval > 0 {
+		currentConfig.Interval = p.Interval
+		updateInterval = p.Interval
+	}
+	if p.SortColumn != nil {
+		currentConfig.SortColumn = p.SortColumn
+		selectedColumn = *p.SortColumn
+	}
+	if p.SortReverse != nil {
+		currentConfig.SortReverse = *p.SortReverse
+		sortReverse = *p.SortReverse
+	}
+	return true
+}
+
+// saveCurrentAsProfile captures the current layout/theme/interval/sort under a
+// profile name and persists it.
+func saveCurrentAsProfile(name string) {
+	if currentConfig.Profiles == nil {
+		currentConfig.Profiles = make(map[string]Profile)
+	}
+	sc := selectedColumn
+	sr := sortReverse
+	currentConfig.Profiles[name] = Profile{
+		DefaultLayout: currentConfig.DefaultLayout,
+		Theme:         currentConfig.Theme,
+		Background:    currentConfig.Background,
+		Interval:      updateInterval,
+		SortColumn:    &sc,
+		SortReverse:   &sr,
+	}
+	saveConfig()
+	saveConfigFlush()
+}
+
+// profileNames returns the saved profile names in sorted order.
+func profileNames() []string {
+	names := make([]string, 0, len(currentConfig.Profiles))
+	for name := range currentConfig.Profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// deleteProfile removes a saved profile. Returns false when it does not exist.
+func deleteProfile(name string) bool {
+	if currentConfig.Profiles == nil {
+		return false
+	}
+	if _, ok := currentConfig.Profiles[name]; !ok {
+		return false
+	}
+	delete(currentConfig.Profiles, name)
+	saveConfig()
+	saveConfigFlush()
+	return true
+}
+
+// handleProfileCliFlags processes --save-profile / --list-profiles /
+// --delete-profile. It returns true when one of them ran and the program should
+// exit. colorName/setColor/interval carry CLI overrides so the saved profile
+// reflects the flags in use.
+func handleProfileCliFlags(colorName string, setColor bool, interval int, setInterval bool) bool {
+	switch {
+	case saveProfile != "":
+		if setColor && colorName != "" {
+			currentConfig.Theme = colorName
+		}
+		if cliBgColor != "" {
+			currentConfig.Background = cliBgColor
+		}
+		if setInterval && interval > 0 {
+			updateInterval = interval
+			currentConfig.Interval = interval
+		}
+		saveCurrentAsProfile(saveProfile)
+		fmt.Printf("Saved profile %q.\n", saveProfile)
+		return true
+	case listProfiles:
+		names := profileNames()
+		if len(names) == 0 {
+			fmt.Println("No profiles saved. Use --save-profile <name> to create one.")
+			return true
+		}
+		fmt.Println("Saved profiles:")
+		for _, n := range names {
+			fmt.Printf("  %s\n", n)
+		}
+		return true
+	case deleteProfileName != "":
+		if deleteProfile(deleteProfileName) {
+			fmt.Printf("Deleted profile %q.\n", deleteProfileName)
+		} else {
+			fmt.Fprintf(os.Stderr, "Profile %q not found.\n", deleteProfileName)
+		}
+		return true
+	}
+	return false
 }
 
 // intOrDefault returns v if > 0, otherwise def.

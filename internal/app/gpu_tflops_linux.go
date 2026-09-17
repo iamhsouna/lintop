@@ -4,11 +4,10 @@ package app
 
 import "strings"
 
-// platformGPUName returns the first NVIDIA GPU's marketing name, if present.
+// platformGPUName returns the selected GPU's marketing name, if present.
 func platformGPUName() string {
-	gpus := queryNvidiaGPUs()
-	if len(gpus) > 0 {
-		return gpus[0].Name
+	if g, ok := primaryGPU(); ok {
+		return g.Name
 	}
 	return ""
 }
@@ -33,6 +32,47 @@ func nvidiaCUDACores(name string) int {
 		{"L40", 18176}, {"L4", 7680}, {"RTX A6000", 10752}, {"RTX A5000", 8192},
 		{"V100", 5120}, {"T4", 2560},
 	}
+	return lookupCores(name, lookup)
+}
+
+// amdStreamProcessors returns the shader (stream processor) count for common
+// AMD GPUs. Returns 0 when unknown.
+func amdStreamProcessors(name string) int {
+	lookup := []struct {
+		match string
+		cores int
+	}{
+		{"7900 XTX", 6144}, {"7900 XT", 5376}, {"7900 GRE", 5120},
+		{"7800 XT", 3840}, {"7700 XT", 3456}, {"7600", 2048},
+		{"6950 XT", 5120}, {"6900 XT", 5120}, {"6800 XT", 4608}, {"6800", 3840},
+		{"6750 XT", 2560}, {"6700 XT", 2560}, {"6650 XT", 2048}, {"6600 XT", 2048},
+		{"6600", 1792}, {"6500 XT", 1024}, {"6400", 768},
+		{"5700 XT", 2560}, {"5700", 2304}, {"5600 XT", 2304},
+		{"Vega 64", 4096}, {"Vega 56", 3584}, {"Radeon VII", 3840},
+		{"MI250", 13312}, {"MI210", 6656}, {"MI100", 7680}, {"MI50", 3840},
+		{"W7900", 6144}, {"W7800", 5120}, {"W6800", 3840},
+	}
+	return lookupCores(name, lookup)
+}
+
+// intelExecutionUnits returns the Xe EU count for common Intel GPUs.
+func intelExecutionUnits(name string) int {
+	lookup := []struct {
+		match string
+		cores int
+	}{
+		{"Arc A770", 512}, {"Arc A750", 448}, {"Arc A580", 384},
+		{"Arc A380", 128}, {"Arc A310", 96},
+		{"Arc B580", 160}, {"Arc B570", 144},
+		{"Iris Xe", 96}, {"UHD Graphics", 32}, {"HD Graphics", 24},
+	}
+	return lookupCores(name, lookup)
+}
+
+func lookupCores(name string, lookup []struct {
+	match string
+	cores int
+}) int {
 	upper := strings.ToUpper(name)
 	for _, e := range lookup {
 		if strings.Contains(upper, strings.ToUpper(e.match)) {
@@ -42,30 +82,36 @@ func nvidiaCUDACores(name string) int {
 	return 0
 }
 
-// gpuFP32TFLOPs estimates raw FP32 throughput. On NVIDIA each CUDA core issues
-// 2 FLOPs/cycle; the boost clock comes from nvidia-smi.
+// gpuFP32TFLOPs estimates raw FP32 throughput across every detected GPU.
+//   - NVIDIA CUDA core: 2 FLOP/cycle
+//   - AMD stream processor: 2 FLOP/cycle
+//   - Intel Xe EU (8 FP32 lanes): 16 FLOP/cycle
 func gpuFP32TFLOPs(gpuCoreCount, maxFreqMHz int) float64 {
-	if maxFreqMHz <= 0 {
-		return 0
-	}
-	gpus := queryNvidiaGPUs()
+	gpus := queryAllGPUs()
 	if len(gpus) == 0 {
 		return 0
 	}
-	cores := 0
+	var total float64
 	for _, g := range gpus {
-		gc := nvidiaCUDACores(g.Name)
-		if gc == 0 {
-			return 0
+		clock := g.MaxFreqMHz
+		if clock == 0 {
+			clock = g.FreqMHz
 		}
-		cores += gc
-		// Use each GPU's own clock when available.
+		if clock == 0 || g.Name == "" {
+			continue
+		}
+		var flops float64
+		switch g.Vendor {
+		case "nvidia":
+			flops = float64(nvidiaCUDACores(g.Name)) * 2.0
+		case "amd":
+			flops = float64(amdStreamProcessors(g.Name)) * 2.0
+		case "intel":
+			flops = float64(intelExecutionUnits(g.Name)) * 16.0
+		}
+		total += flops * float64(clock) * 1e-6
 	}
-	clock := maxFreqMHz
-	if gpus[0].MaxFreqMHz > 0 {
-		clock = gpus[0].MaxFreqMHz
-	}
-	return float64(cores) * 2.0 * float64(clock) * 1e-6
+	return total
 }
 
 func gpuFP16TFLOPs(gpuCoreCount, maxFreqMHz int) float64 {

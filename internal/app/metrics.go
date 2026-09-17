@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,12 @@ func startPrometheusServer(port string) {
 	registry.MustRegister(pcoreUsage)
 	registry.MustRegister(gpuUsage)
 	registry.MustRegister(gpuFreqMHz)
+	registry.MustRegister(gpuDeviceUtil)
+	registry.MustRegister(gpuDeviceMemUsed)
+	registry.MustRegister(gpuDeviceMemTotal)
+	registry.MustRegister(gpuDeviceTemp)
+	registry.MustRegister(gpuDevicePower)
+	registry.MustRegister(gpuDeviceFreq)
 	registry.MustRegister(powerUsage)
 	registry.MustRegister(socTemp)
 	registry.MustRegister(gpuTemp)
@@ -223,6 +230,7 @@ func gpuMetricsFromSoc(m SocMetrics) GPUMetrics {
 		ActivePercent: m.GPUActive,
 		Power:         m.GPUPower + m.GPUSRAMPower,
 		Temp:          m.GPUTemp,
+		PerGPU:        m.PerGPU,
 	}
 }
 
@@ -340,6 +348,20 @@ func publishPrometheusMetrics(snapshot prometheusMetricsSnapshot) {
 
 	gpuUsage.Set(snapshot.GPUMetrics.ActivePercent)
 	gpuFreqMHz.Set(float64(snapshot.GPUMetrics.FreqMHz))
+
+	for _, g := range snapshot.GPUMetrics.PerGPU {
+		labels := prometheus.Labels{
+			"index":  strconv.Itoa(g.Index),
+			"vendor": g.Vendor,
+			"name":   g.Name,
+		}
+		gpuDeviceUtil.With(labels).Set(g.UtilPercent)
+		gpuDeviceMemUsed.With(labels).Set(g.MemUsedMB)
+		gpuDeviceMemTotal.With(labels).Set(g.MemTotalMB)
+		gpuDeviceTemp.With(labels).Set(g.TempC)
+		gpuDevicePower.With(labels).Set(g.PowerW)
+		gpuDeviceFreq.With(labels).Set(float64(g.FreqMHz))
+	}
 
 	updatePrometheusThunderbolt(snapshot.TBNetStats, snapshot.RDMAStatus)
 	updatePrometheusSensors(cpuMetrics.Fans, cpuMetrics.TempSensors)

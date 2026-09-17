@@ -120,3 +120,101 @@ func TestPlatformGPUName(t *testing.T) {
 		t.Skip("no hwmon on this system")
 	}
 }
+
+func TestParseMHz(t *testing.T) {
+	cases := map[string]int{
+		"1: 1800Mhz *": 1800,
+		"0: 500Mhz":    500,
+		"3: 2615MHz":   2615,
+		"not a clock":  0,
+	}
+	for in, want := range cases {
+		if got := parseMHz(in); got != want {
+			t.Errorf("parseMHz(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+func TestParseQuotedFields(t *testing.T) {
+	line := `03:00.0 "VGA compatible controller" "Advanced Micro Devices, Inc. [AMD/ATI]" "Navi 21 [Radeon RX 6800/6800 XT / 6900 XT]"`
+	fields := parseQuotedFields(line)
+	if len(fields) < 3 {
+		t.Fatalf("expected >=3 fields, got %d (%v)", len(fields), fields)
+	}
+	if fields[2] == "" {
+		t.Error("device name field was empty")
+	}
+}
+
+func TestAMDFromIntelLookups(t *testing.T) {
+	cases := []struct {
+		name string
+		fn   func(string) int
+		want int
+	}{
+		{"Navi 21 [Radeon RX 6900 XT]", amdStreamProcessors, 5120},
+		{"Radeon RX 7900 XTX", amdStreamProcessors, 6144},
+		{"Arc A770 Graphics", intelExecutionUnits, 512},
+		{"Unknown Device", amdStreamProcessors, 0},
+	}
+	for _, c := range cases {
+		if got := c.fn(c.name); got != c.want {
+			t.Errorf("%q lookup = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+func TestApplyProfile(t *testing.T) {
+	saved := currentConfig
+	savedCol, savedRev := selectedColumn, sortReverse
+	t.Cleanup(func() {
+		currentConfig = saved
+		selectedColumn, sortReverse = savedCol, savedRev
+	})
+
+	sc := 6
+	rev := true
+	currentConfig.Profiles = map[string]Profile{
+		"gaming": {
+			DefaultLayout: "multi_gpu",
+			Theme:         "nord",
+			Interval:      250,
+			SortColumn:    &sc,
+			SortReverse:   &rev,
+		},
+	}
+
+	if !applyProfile("gaming") {
+		t.Fatal("applyProfile returned false for an existing profile")
+	}
+	if currentConfig.DefaultLayout != "multi_gpu" {
+		t.Errorf("layout = %q, want multi_gpu", currentConfig.DefaultLayout)
+	}
+	if currentConfig.Theme != "nord" {
+		t.Errorf("theme = %q, want nord", currentConfig.Theme)
+	}
+	if updateInterval != 250 {
+		t.Errorf("interval = %d, want 250", updateInterval)
+	}
+	if selectedColumn != 6 || !sortReverse {
+		t.Errorf("sort not applied: col=%d reverse=%v", selectedColumn, sortReverse)
+	}
+	if applyProfile("does-not-exist") {
+		t.Error("applyProfile returned true for a missing profile")
+	}
+	names := profileNames()
+	if len(names) != 1 || names[0] != "gaming" {
+		t.Errorf("profileNames = %v, want [gaming]", names)
+	}
+}
+
+func TestThemeRegistration(t *testing.T) {
+	for _, name := range []string{"nord", "gruvbox", "dracula", "tokyonight", "matrix"} {
+		if _, ok := colorMap[name]; !ok {
+			t.Errorf("theme %q missing from colorMap", name)
+		}
+		if _, ok := themeHexMap[name]; !ok {
+			t.Errorf("theme %q missing from themeHexMap", name)
+		}
+	}
+}

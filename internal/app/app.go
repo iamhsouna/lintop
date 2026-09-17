@@ -82,6 +82,8 @@ func setupUI() {
 	memoryGauge.Title = i18n.T("TUI_MemoryUsage")
 	aneGauge.Title = i18n.T("TUI_ANEUsage")
 
+	initMultiGPUGauges()
+
 	PowerChart, NetworkInfo = w.NewParagraph(), w.NewParagraph()
 	PowerChart.Title, NetworkInfo.Title = i18n.T("TUI_PowerUsage"), i18n.T("TUI_NetworkDisk")
 
@@ -806,6 +808,20 @@ func Run() {
 	}
 
 	currentUser = os.Getenv("USER")
+
+	// GPU selection / listing and config-profile management are handled before
+	// the TUI or alternate modes start.
+	if handleGPUCliFlags() {
+		return
+	}
+	if handleProfileCliFlags(colorName, setColor, interval, setInterval) {
+		return
+	}
+	if cliProfile != "" {
+		if !applyProfile(cliProfile) {
+			fmt.Fprintf(os.Stderr, "Profile %q not found (use --list-profiles).\n", cliProfile)
+		}
+	}
 
 	if runAlternateMode() {
 		return
@@ -1733,10 +1749,40 @@ func updateGPUUI(gpuMetrics GPUMetrics) {
 
 	renderGPUHistoryChart(gpuMetrics, avgGPU, effectiveNow)
 
+	updateMultiGPUGauges(gpuMetrics)
+
 	// Update gauge colors with dynamic saturation if 1977 theme is active
 	if currentConfig.Theme == "1977" {
 		update1977GaugeColors()
 	}
+}
+
+// updateMultiGPUGauges refreshes the per-GPU panes used by the multi_gpu layout.
+func updateMultiGPUGauges(gpuMetrics GPUMetrics) {
+	if len(multiGpuGauges) == 0 {
+		return
+	}
+	for i, gauge := range multiGpuGauges {
+		if i >= len(gpuMetrics.PerGPU) {
+			continue
+		}
+		s := gpuMetrics.PerGPU[i]
+		gauge.Percent = int(s.UtilPercent)
+		label := s.Name
+		if label == "" {
+			label = strings.ToUpper(s.Vendor)
+		}
+		gauge.Title = fmt.Sprintf(" GPU%d · %s · %d%% · %s · %s ",
+			s.Index, label, int(s.UtilPercent), formatTemp(s.TempC), formatWatts(s.PowerW))
+	}
+}
+
+// formatWatts renders a wattage value compactly for gauge titles.
+func formatWatts(watts float64) string {
+	if watts <= 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.0fW", watts)
 }
 
 func renderGPUHistoryChart(gpuMetrics GPUMetrics, avgGPU, effectiveNow float64) {
@@ -2003,6 +2049,12 @@ func parseCommandLineFlags() {
 	flag.StringVar(&overlaySections, "overlay-sections", "", "Comma-separated visible sections for overlay (e.g. cpu,gpu,memory)")
 	flag.Float64Var(&overlayOpacity, "overlay-opacity", 0.88, "Overlay window opacity (0.15-1.0)")
 	flag.IntVar(&filterPID, "pid", 0, "Monitor a specific process by PID")
+	flag.IntVar(&selectedGPU, "gpu", 0, "GPU index for the main gauges (see --list-gpus)")
+	flag.BoolVar(&listGPUs, "list-gpus", false, "List detected GPUs and exit")
+	flag.StringVar(&cliProfile, "profile", "", "Load a saved configuration profile (layout/theme/interval)")
+	flag.StringVar(&saveProfile, "save-profile", "", "Save the current configuration as a named profile and exit")
+	flag.BoolVar(&listProfiles, "list-profiles", false, "List saved configuration profiles and exit")
+	flag.StringVar(&deleteProfileName, "delete-profile", "", "Delete a saved configuration profile and exit")
 	flag.BoolVar(&fanControl, "fan-control", false, "Enable interactive fan speed control (⚠️  writes to SMC)")
 	flag.BoolVar(&dumpTemps, "dump-temps", false, "Diagnostic: dump all raw SMC temperature keys and exit")
 	flag.BoolVar(&dumpDebug, "dump-debug", false, "Diagnostic: dump IOReport/HID/SMC/NVMe debug info and exit")

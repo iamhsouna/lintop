@@ -10,20 +10,6 @@ import (
 	"time"
 )
 
-// NVGPU holds a snapshot of a single NVIDIA GPU as reported by nvidia-smi.
-type NVGPU struct {
-	Index      int
-	Name       string
-	UtilPct    float64
-	MemUsedMB  float64
-	MemTotalMB float64
-	TempC      float64
-	PowerW     float64
-	FreqMHz    int
-	MaxFreqMHz int
-	FanPct     float64
-}
-
 var (
 	nvSmiOnce    sync.Once
 	nvSmiPath    string
@@ -31,7 +17,7 @@ var (
 	nvMaxFreq    int
 	nvMaxFreqMu  sync.Mutex
 	nvLastQuery  time.Time
-	nvLastResult []NVGPU
+	nvLastResult []GPUInfo
 	nvQueryMu    sync.Mutex
 )
 
@@ -55,7 +41,7 @@ func findNvidiaSmi() string {
 const nvCacheTTL = 250 * time.Millisecond
 
 // queryNvidiaGPUs returns one entry per NVIDIA GPU, or nil when unavailable.
-func queryNvidiaGPUs() []NVGPU {
+func queryNvidiaGPUs() []GPUInfo {
 	path := findNvidiaSmi()
 	if path == "" {
 		return nil
@@ -78,7 +64,7 @@ func queryNvidiaGPUs() []NVGPU {
 		return nil
 	}
 
-	var gpus []NVGPU
+	var gpus []GPUInfo
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -88,8 +74,8 @@ func queryNvidiaGPUs() []NVGPU {
 		if len(fields) < 10 {
 			continue
 		}
-		g := NVGPU{
-			Index:      atoiSafe(fields[0]),
+		g := GPUInfo{
+			Vendor:     "nvidia",
 			Name:       strings.TrimSpace(fields[1]),
 			UtilPct:    floatSafe(fields[2]),
 			MemUsedMB:  floatSafe(fields[3]),
@@ -142,15 +128,6 @@ func nvidiaMaxFreqMHz() int {
 	nvMaxFreqMu.Lock()
 	defer nvMaxFreqMu.Unlock()
 	return nvMaxFreq
-}
-
-// totalNvidiaMemory returns combined used/total VRAM across all GPUs (bytes).
-func totalNvidiaMemory(gpus []NVGPU) (used, total uint64) {
-	for _, g := range gpus {
-		used += uint64(g.MemUsedMB) * 1024 * 1024
-		total += uint64(g.MemTotalMB) * 1024 * 1024
-	}
-	return used, total
 }
 
 // queryNvidiaComputeApps returns per-PID VRAM usage for active compute

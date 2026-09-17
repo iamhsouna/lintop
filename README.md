@@ -2,14 +2,15 @@
 
 # lintop
 
-### The Linux system monitor for your terminal — with first-class NVIDIA GPU support
+### The Linux system monitor for your terminal — with first-class NVIDIA, AMD & Intel GPU support
 
 `htop` + `nvtop` + `powermetrics`, in one fast TUI. Real-time CPU, memory, disk, network,
-temperatures, processes **and** NVIDIA GPU metrics (utilization, VRAM, power, clocks) — written in Go.
+temperatures, processes **and** GPU metrics (utilization, VRAM, power, clocks) for **NVIDIA,
+AMD and Intel** GPUs — written in Go.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/platform-linux-blue.svg)](#supported-platforms)
-[![NVIDIA GPU](https://img.shields.io/badge/NVIDIA-CUDA-76B900.svg?logo=nvidia&logoColor=white)](#nvidia-gpu-support)
+[![GPU: NVIDIA | AMD | Intel](https://img.shields.io/badge/GPU-NVIDIA%20%7C%20AMD%20%7C%20Intel-76B900.svg)](#gpu-support-nvidia--amd--intel)
 [![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8.svg?logo=go&logoColor=white)](https://go.dev)
 [![GitHub stars](https://img.shields.io/github/stars/iamhsouna/lintop?style=social)](https://github.com/iamhsouna/lintop/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/iamhsouna/lintop)](https://github.com/iamhsouna/lintop/issues)
@@ -36,7 +37,7 @@ and expose **Prometheus metrics** for dashboards and alerting.
 - [One-line install](#one-line-install)
 - [One-line update](#one-line-update)
 - [Quick start](#quick-start)
-- [NVIDIA GPU support](#nvidia-gpu-support)
+- [GPU support (NVIDIA / AMD / Intel)](#gpu-support-nvidia--amd--intel)
 - [lintop vs htop vs nvtop](#lintop-vs-htop-vs-nvtop)
 - [Headless & Prometheus](#headless--prometheus)
 - [CLI flags](#cli-flags)
@@ -66,22 +67,25 @@ and expose **Prometheus metrics** for dashboards and alerting.
 
 | Area | What you get |
 | --- | --- |
-| **NVIDIA GPU** | Utilization %, VRAM used/total, temperature, power (W), SM clock, fan %, per-process GPU share, estimated FP32/FP16 TFLOPS |
+| **GPU (NVIDIA / AMD / Intel)** | Utilization %, VRAM used/total, temperature, power (W), clock, fan %, per-process GPU share (NVIDIA), estimated FP32/FP16 TFLOPS |
+| **Multi-GPU** | Per-GPU panes in the `multi_gpu` layout, `--gpu` selection, `--list-gpus`, aggregate TFLOPs, per-device Prometheus metrics |
 | **CPU** | Total and per-core usage, core topology, load, CPU package/DIMM temperatures |
-| **Power** | GPU power via `nvidia-smi`; CPU package power via RAPL where readable |
+| **Power** | GPU power (nvidia-smi / amdgpu hwmon / Intel hwmon); CPU package power via RAPL where readable |
 | **Memory** | RAM used/available/total, swap used/total |
 | **Processes** | PID, user, virtual/resident memory, CPU %, GPU %, memory %, runtime, command; search, sort and kill (F9) |
 | **Disk** | Read/write throughput and IOPS, per-filesystem usage |
 | **Network** | Per-interface RX/TX throughput and link speed (Wi-Fi and Ethernet) |
-| **Temperatures** | Grouped hwmon sensors: CPU, GPU, SSD/NVMe, board, ambient |
+| **Temperatures** | Grouped hwmon sensors: CPU, per-GPU, SSD/NVMe, board, ambient |
 | **Battery** | Charge level and charging state on laptops |
-| **UI** | 20 layouts, 14+ color themes, custom hex themes, light/dark detection, party mode |
-| **Output** | TUI, headless JSON/YAML/XML/CSV/TOON, Prometheus `/metrics` |
+| **UI** | 21 layouts, 40+ color themes, custom hex themes, light/dark detection, party mode |
+| **Profiles** | Save and load named workspaces (layout + theme + interval + sort) |
+| **Output** | TUI, headless JSON/YAML/XML/CSV/TOON, Prometheus `/metrics` (global + per-GPU) |
+| **i18n** | 26 languages with automatic system detection |
 | **Operations** | `lintop --update` self-update, one-line installer, persistent config |
 
 ## Screenshots & demo
 
-> Run `lintop` in any terminal and press `?` for help, `l` to cycle 20 layouts, `c` to cycle themes.
+> Run `lintop` in any terminal and press `?` for help, `l` to cycle 21 layouts, `c` to cycle themes.
 
 ```text
  lintop  •  AMD Ryzen 9 5950X 16-Core Processor  •  32C (32P)  •  NVIDIA GeForce RTX 3090  •  121 GB
@@ -149,50 +153,84 @@ lintop --headless --count 1  # print one JSON sample and exit
 lintop -p 2112               # expose Prometheus on :2112/metrics
 ```
 
-## NVIDIA GPU support
+## GPU support (NVIDIA / AMD / Intel)
 
-lintop talks to the NVIDIA driver through **`nvidia-smi`**, which ships with the standard driver.
+lintop auto-detects every GPU and presents a vendor-neutral view. `--list-gpus` shows what was
+found and `--gpu <index>` selects which GPU drives the main gauges.
 
-**Requirements**
+```bash
+lintop --list-gpus
+# IDX  VENDOR  NAME                              UTIL%     VRAM(MB)     TEMP    WATTS
+# 0    nvidia  NVIDIA GeForce RTX 3090            15.0          475     52.0     34.7
+```
 
-- An NVIDIA GPU with a recent proprietary driver (`nvidia-smi` on `PATH`).
-- CUDA/TensorRT are **not** required — only the driver utilities.
+### NVIDIA
 
-**What is collected**
+Talked to through **`nvidia-smi`**, which ships with the proprietary driver. CUDA/TensorRT are
+**not** required — only the driver utilities.
 
 | Metric | Source |
 | --- | --- |
 | GPU utilization % | `nvidia-smi --query-gpu=utilization.gpu` |
 | VRAM used / total | `nvidia-smi --query-gpu=memory.used,memory.total` |
-| GPU temperature | `nvidia-smi --query-gpu=temperature.gpu` |
-| Power draw (W) | `nvidia-smi --query-gpu=power.draw` |
-| SM clock / max SM clock | `nvidia-smi --query-gpu=clocks.sm,clocks.max.sm` |
-| Fan speed % | `nvidia-smi --query-gpu=fan.speed` |
+| Temperature, power, SM clock, fan % | `nvidia-smi --query-gpu=...` |
 | Per-process GPU share | `nvidia-smi --query-compute-apps=pid,used_memory` |
 | FP32/FP16 TFLOPS estimate | CUDA-core table × max SM clock |
 
-> Verified on an **NVIDIA GeForce RTX 3090** (Ampere) running Ubuntu. Multi-GPU hosts report the
-> primary GPU in the TUI while aggregate VRAM/TFLOPs include every detected GPU.
+### AMD
 
-If `nvidia-smi` is missing or no GPU is present, GPU fields are simply zero and the rest of
-lintop keeps working.
+Read directly from the `amdgpu` driver via sysfs — **no ROCm install required**.
+
+| Metric | Source |
+| --- | --- |
+| GPU utilization % | `/sys/class/drm/card*/device/gpu_busy_percent` |
+| VRAM used / total | `mem_info_vram_used`, `mem_info_vram_total` |
+| Temperature | amdgpu `hwmon` `temp*_input` |
+| Power (W) | amdgpu `hwmon` `power1_average` |
+| Clock / max clock | `hwmon/freq1_input`, `pp_dpm_sclk` |
+| FP32/FP16 TFLOPS estimate | Stream-processor table × max clock |
+
+### Intel
+
+Read from the `i915`/`xe` DRM sysfs; utilization is sampled with `intel_gpu_top` when the binary
+is present and has `CAP_PERFMON` (otherwise it reads 0).
+
+| Metric | Source |
+| --- | --- |
+| GPU utilization % | `intel_gpu_top -J` (optional) |
+| Clock / max clock | `gt_cur_freq_mhz`, `gt_max_freq_mhz` |
+| Temperature / power | DRM device `hwmon` |
+| FP32/FP16 TFLOPS estimate | Execution-unit table × max clock |
+
+### Multi-GPU
+
+- `lintop --list-gpus` — enumerate all GPUs
+- `lintop --gpu 1` — show GPU #1 in the main gauges
+- `lintop` + press `l` until the **multi_gpu** layout — one live pane per GPU
+- Headless JSON includes a `gpus` array; Prometheus exports `lintop_gpu_*` per device
+
+> Verified on an **NVIDIA GeForce RTX 3090** (Ampere) running Ubuntu.
+
+If no supported GPU is present, GPU fields are simply zero and the rest of lintop keeps working.
 
 ## lintop vs htop vs nvtop
 
 | Capability | lintop | htop | nvtop |
 | --- | :---: | :---: | :---: |
 | CPU / memory / process list | ✅ | ✅ | — |
-| NVIDIA GPU utilization & VRAM | ✅ | — | ✅ |
+| NVIDIA / AMD / Intel GPU utilization & VRAM | ✅ | — | NVIDIA/AMD |
 | GPU power, clock, temperature | ✅ | — | ✅ |
-| Per-process GPU attribution | ✅ | — | ✅ |
+| Per-process GPU attribution | ✅ (NVIDIA) | — | ✅ |
+| Multi-GPU panes & per-device Prometheus | ✅ | — | ✅ |
 | Disk & network throughput | ✅ | partial | — |
 | Temperature sensors (hwmon) | ✅ | — | partial |
 | Battery status | ✅ | — | — |
 | Prometheus metrics | ✅ | — | — |
 | Headless JSON/YAML/XML/CSV | ✅ | — | — |
+| Config profiles / saved layouts | ✅ | — | — |
 | Single static binary, no daemon | ✅ | ✅ | ✅ |
 
-Use lintop when you want the whole machine — CPU *and* NVIDIA GPU — in one screen.
+Use lintop when you want the whole machine — CPU *and* GPU — in one screen.
 
 ## Headless & Prometheus
 
@@ -231,7 +269,13 @@ scrape_configs:
 | `--unit-disk <unit>` | `auto`, `byte`, `kb`, `mb`, `gb` |
 | `--unit-temp <unit>` | `celsius` (default), `fahrenheit` |
 | `--pid <pid>` | Monitor a single process |
-| `--lang <code>` | UI language (20 languages, auto-detected) |
+| `--gpu <index>` | GPU index for the main gauges |
+| `--list-gpus` | List detected GPUs and exit |
+| `--profile <name>` | Load a saved configuration profile |
+| `--save-profile <name>` | Save the current configuration as a profile and exit |
+| `--list-profiles` | List saved profiles and exit |
+| `--delete-profile <name>` | Delete a saved profile and exit |
+| `--lang <code>` | UI language (26 languages, auto-detected) |
 
 ## Keyboard shortcuts
 
@@ -255,13 +299,37 @@ scrape_configs:
 
 ## Configuration
 
-lintop persists your layout, theme, interval and sort preferences.
+lintop persists your layout, theme, interval and sort preferences, and supports **named
+profiles** (saved workspaces).
 
 | File | Path |
 | --- | --- |
 | Config | `$XDG_CONFIG_HOME/lintop/config.json` (or `~/.lintop/config.json`) |
 | Theme | `$XDG_CONFIG_HOME/lintop/theme.json` (or `~/.lintop/theme.json`) |
 | Log | `$XDG_STATE_HOME/lintop/lintop.log` (or `~/.lintop/lintop.log`) |
+
+### Profiles (saved layouts)
+
+A profile stores the current layout, theme, background, refresh interval and process sort.
+
+```bash
+lintop --save-profile gaming --foreground nord --interval 250   # capture a workspace
+lintop --list-profiles                                          # list saved profiles
+lintop --profile gaming                                         # start with that workspace
+lintop --delete-profile gaming                                  # remove it
+```
+
+You can also cycle layouts (`l`) / themes (`c`) inside the TUI and then save the result from
+another terminal, or add profiles by hand to `config.json`:
+
+```json
+{
+  "profiles": {
+    "gaming": { "default_layout": "gpu_focus", "theme": "nord", "interval": 250 },
+    "server": { "default_layout": "multi_gpu", "theme": "matrix", "interval": 1000 }
+  }
+}
+```
 
 Custom theme example (`theme.json`):
 
@@ -276,6 +344,20 @@ Custom theme example (`theme.json`):
   "power": "#FF6E40"
 }
 ```
+
+### Themes
+
+40+ built-in themes: `green`, `red`, `blue`, `nord`, `gruvbox`, `dracula`, `tokyonight`,
+`onedark`, `monokai`, `solarized`, `everforest`, `kanagawa`, `rosepine`, `matrix`,
+`catppuccin` (`frappe` / `macchiato` / `mocha`), and many more. Cycle with `c` or set
+`--foreground <name|#hex>`.
+
+### Languages
+
+26 languages ship with lintop (English, Arabic, Chinese, Czech, Dutch, French, German, Greek,
+Hebrew, Hindi, Hungarian, Indonesian, Italian, Japanese, Korean, Polish, Portuguese, Romanian,
+Russian, Spanish, Swedish, Thai, Turkish, Ukrainian, Vietnamese and more). The system language
+is auto-detected; override with `--lang` or `LINTOP_LANG`.
 
 ## Build from source
 
@@ -304,7 +386,8 @@ The Linux build is pure Go — no CGO, no C toolchain required.
 | Linux on Apple Silicon (Asahi) | arm64 | ✅ Runs; ANE panels shown |
 | macOS (Apple Silicon) | arm64 | Use [mactop](https://github.com/metaspartan/mactop) |
 
-Only NVIDIA GPUs are supported for GPU metrics today. AMD/Intel GPU support is on the roadmap.
+Only NVIDIA, AMD and Intel GPUs are supported for GPU metrics today. Other vendors fall back to
+CPU/memory/process monitoring only.
 
 ## Troubleshooting / FAQ
 
@@ -334,12 +417,15 @@ hardware; they appear automatically on macOS or on Apple Silicon running Linux (
 
 ## Roadmap
 
-- [ ] AMD (ROCm/`rocm-smi`) and Intel (`intel_gpu_top`) GPU support
-- [ ] Per-GPU selection and multi-GPU TUI panes
+- [x] NVIDIA GPU support
+- [x] AMD (amdgpu sysfs) and Intel (`intel_gpu_top`) GPU support
+- [x] Per-GPU selection and multi-GPU TUI panes
 - [x] Prebuilt release binaries and one-line installer
 - [x] Self-update (`lintop --update`)
-- [ ] Config profiles and saved layouts
-- [ ] More languages and themes
+- [x] Config profiles and saved layouts
+- [x] More languages (26) and themes (40+)
+- [ ] Per-process GPU attribution for AMD/Intel
+- [ ] `rocm-smi`/`xpu-smi` backends for richer telemetry
 
 ## Contributing
 
@@ -350,7 +436,7 @@ Contributions, bug reports and feature requests are welcome!
 3. Open a pull request with a clear description.
 
 If lintop is useful to you, please ⭐ **star the repository** — it helps other Linux and
-NVIDIA users find it.
+GPU users find it.
 
 ## License
 

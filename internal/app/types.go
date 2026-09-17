@@ -65,6 +65,23 @@ type GPUMetrics struct {
 	EffectiveLoad float64 // Frequency-adjusted load: Active% * (current / max)
 	Power         float64
 	Temp          float32
+	PerGPU        []GPUSample
+}
+
+// GPUSample is a vendor-neutral per-GPU reading surfaced in the UI, headless
+// output and Prometheus metrics.
+type GPUSample struct {
+	Index       int     `json:"index" yaml:"index" xml:"Index" toon:"index"`
+	Vendor      string  `json:"vendor" yaml:"vendor" xml:"Vendor" toon:"vendor"`
+	Name        string  `json:"name" yaml:"name" xml:"Name" toon:"name"`
+	UtilPercent float64 `json:"utilization_percent" yaml:"utilization_percent" xml:"UtilizationPercent" toon:"utilization_percent"`
+	MemUsedMB   float64 `json:"memory_used_mb" yaml:"memory_used_mb" xml:"MemoryUsedMB" toon:"memory_used_mb"`
+	MemTotalMB  float64 `json:"memory_total_mb" yaml:"memory_total_mb" xml:"MemoryTotalMB" toon:"memory_total_mb"`
+	TempC       float64 `json:"temperature_c" yaml:"temperature_c" xml:"TemperatureC" toon:"temperature_c"`
+	PowerW      float64 `json:"power_w" yaml:"power_w" xml:"PowerW" toon:"power_w"`
+	FreqMHz     int     `json:"freq_mhz" yaml:"freq_mhz" xml:"FreqMHz" toon:"freq_mhz"`
+	MaxFreqMHz  int     `json:"max_freq_mhz" yaml:"max_freq_mhz" xml:"MaxFreqMHz" toon:"max_freq_mhz"`
+	FanPercent  float64 `json:"fan_percent" yaml:"fan_percent" xml:"FanPercent" toon:"fan_percent"`
 }
 
 type ProcessMetrics struct {

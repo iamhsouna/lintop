@@ -29,9 +29,10 @@ const (
 	LayoutHistorySoC      = "history_soc"  // StepChart history: CPU, GPU, ANE, DRAM Bandwidth
 	LayoutFan             = "fan"          // Fan control and temperature sensors
 	LayoutGPUMemory       = "gpu_memory"   // GPU + Memory focused with memory bandwidth chart
+	LayoutMultiGPU        = "multi_gpu"    // One pane per detected GPU + process list
 )
 
-var layoutOrder = []string{LayoutDefault, LayoutAlternative, LayoutAlternativeFull, LayoutVertical, LayoutCompact, LayoutDashboard, LayoutGaugesOnly, LayoutGPUFocus, LayoutCPUFocus, LayoutGPUMemory, LayoutNetworkIO, LayoutSmall, LayoutTiny, LayoutMicro, LayoutNano, LayoutPico, LayoutHistory, LayoutHistoryFull, LayoutHistorySoC, LayoutFan}
+var layoutOrder = []string{LayoutDefault, LayoutAlternative, LayoutAlternativeFull, LayoutVertical, LayoutCompact, LayoutDashboard, LayoutGaugesOnly, LayoutGPUFocus, LayoutCPUFocus, LayoutGPUMemory, LayoutMultiGPU, LayoutNetworkIO, LayoutSmall, LayoutTiny, LayoutMicro, LayoutNano, LayoutPico, LayoutHistory, LayoutHistoryFull, LayoutHistorySoC, LayoutFan}
 
 func setupGrid() {
 	totalLayouts = len(layoutOrder)
@@ -285,6 +286,8 @@ func setLayoutGrid(layoutName string) {
 		setCompactLayoutGrid(layoutName)
 	case LayoutInfo, LayoutFan:
 		setInfoFanLayoutGrid(layoutName)
+	case LayoutMultiGPU:
+		setMultiGPULayoutGrid()
 	case LayoutHistory, LayoutHistoryFull, LayoutGPUMemory:
 		setHistoryLikeLayoutGrid(layoutName)
 	case LayoutHistorySoC:
@@ -398,6 +401,32 @@ func setCompactLayoutGrid(layoutName string) {
 			),
 		)
 	}
+}
+
+// setMultiGPULayoutGrid lays out one gauge per detected GPU in a two-column
+// grid, with the process list across the bottom. When no multi-GPU data is
+// available it falls back to the default layout.
+func setMultiGPULayoutGrid() {
+	n := len(multiGpuGauges)
+	if n == 0 {
+		setLayoutGrid(LayoutDefault)
+		return
+	}
+
+	gpuRows := (n + 1) / 2
+	totalRows := gpuRows + 1
+	rowRatio := 1.0 / float64(totalRows)
+
+	var entries []any
+	for i := 0; i < n; i += 2 {
+		cols := []any{ui.NewCol(0.5, multiGpuGauges[i])}
+		if i+1 < n {
+			cols = append(cols, ui.NewCol(0.5, multiGpuGauges[i+1]))
+		}
+		entries = append(entries, ui.NewRow(rowRatio, cols...))
+	}
+	entries = append(entries, ui.NewRow(rowRatio, ui.NewCol(1.0, processList)))
+	grid.Set(entries...)
 }
 
 func setInfoFanLayoutGrid(layoutName string) {

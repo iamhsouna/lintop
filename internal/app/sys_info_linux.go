@@ -121,7 +121,7 @@ func getSOCInfo() SystemInfo {
 func computeSOCInfo() SystemInfo {
 	cores := runtime.NumCPU()
 	name := cpuBrandString()
-	gpuCount := len(queryNvidiaGPUs())
+	gpuCount := len(queryAllGPUs())
 	return SystemInfo{
 		Name:         name,
 		CoreCount:    cores,
@@ -222,7 +222,7 @@ func getPerfLevelCoresLegacy() map[string]int {
 }
 
 func getGPUCores() string {
-	gpus := queryNvidiaGPUs()
+	gpus := queryAllGPUs()
 	if len(gpus) > 0 {
 		return strconv.Itoa(len(gpus))
 	}
@@ -239,7 +239,7 @@ func getTotalRAMGB() int {
 
 // GetGPUMaxFreqMHz returns the maximum SM clock reported by nvidia-smi.
 func GetGPUMaxFreqMHz() int {
-	if f := nvidiaMaxFreqMHz(); f > 0 {
+	if f := maxGPUFreqMHz(); f > 0 {
 		return f
 	}
 	return 0

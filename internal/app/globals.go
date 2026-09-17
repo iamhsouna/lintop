@@ -26,12 +26,22 @@ func init() {
 }
 
 var (
-	version                                   = "v2.1.5"
+	version                                   = "v2.2.0"
 	cpuGauge, gpuGauge, memoryGauge, aneGauge *w.Gauge
 	// aneWidget / aneHistoryWidget are the drawables placed in layouts. When
 	// no Apple Neural Engine is present they point at blank placeholders so
 	// ANE panels are hidden entirely.
-	aneWidget, aneHistoryWidget                                 ui.Drawable
+	aneWidget, aneHistoryWidget ui.Drawable
+	// selectedGPU chooses which GPU the primary gauges track. multiGpuGauges
+	// holds one gauge per detected GPU for the multi_gpu layout.
+	selectedGPU    int
+	listGPUs       bool
+	multiGpuGauges []*w.Gauge
+	// Config profile selection / management.
+	cliProfile                                                  string
+	saveProfile                                                 string
+	listProfiles                                                bool
+	deleteProfileName                                           string
 	mainBlock                                                   *ui.Block
 	modelText, PowerChart, NetworkInfo, helpText, infoParagraph *w.Paragraph
 	tbInfoParagraph                                             *w.Paragraph
@@ -230,6 +240,50 @@ var (
 			Name: "lintop_gpu_freq_mhz",
 			Help: "Current GPU frequency in MHz",
 		},
+	)
+
+	// Per-GPU metrics (multi-GPU / multi-vendor)
+	gpuDeviceUtil = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_utilization_percent",
+			Help: "Per-GPU utilization percentage",
+		},
+		[]string{"index", "vendor", "name"},
+	)
+	gpuDeviceMemUsed = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_memory_used_mb",
+			Help: "Per-GPU used VRAM in megabytes",
+		},
+		[]string{"index", "vendor", "name"},
+	)
+	gpuDeviceMemTotal = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_memory_total_mb",
+			Help: "Per-GPU total VRAM in megabytes",
+		},
+		[]string{"index", "vendor", "name"},
+	)
+	gpuDeviceTemp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_temperature_celsius",
+			Help: "Per-GPU temperature in Celsius",
+		},
+		[]string{"index", "vendor", "name"},
+	)
+	gpuDevicePower = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_power_watts",
+			Help: "Per-GPU power draw in watts",
+		},
+		[]string{"index", "vendor", "name"},
+	)
+	gpuDeviceFreq = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_clock_mhz",
+			Help: "Per-GPU clock in MHz",
+		},
+		[]string{"index", "vendor", "name"},
 	)
 	powerUsage = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{

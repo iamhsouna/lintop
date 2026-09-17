@@ -105,6 +105,7 @@ type HeadlessOutput struct {
 	SCPUUsage             []float64            `json:"scpu_usage,omitempty" yaml:"scpu_usage,omitempty" xml:"SCPUUsage" toon:"scpu_usage"`
 	GPUUsage              float64              `json:"gpu_usage" yaml:"gpu_usage" xml:"GPUUsage" toon:"gpu_usage"`
 	GPUMetrics            HeadlessGPUMetrics   `json:"gpu_metrics" yaml:"gpu_metrics" xml:"GPUMetrics" toon:"gpu_metrics"`
+	GPUs                  []GPUSample          `json:"gpus,omitempty" yaml:"gpus,omitempty" xml:"GPUs,omitempty" toon:"gpus"`
 	TFLOPsFP32            float64              `json:"tflops_fp32" yaml:"tflops_fp32" xml:"TFLOPsFP32" toon:"tflops_fp32"`
 	TFLOPsFP16            float64              `json:"tflops_fp16" yaml:"tflops_fp16" xml:"TFLOPsFP16" toon:"tflops_fp16"`
 	DisplayFPS            uint32               `json:"display_fps,omitempty" yaml:"display_fps,omitempty" xml:"DisplayFPS,omitempty" toon:"display_fps"`
@@ -552,6 +553,7 @@ func collectHeadlessData(tbInfo *ThunderboltOutput, sysInfo SystemInfo) Headless
 		PCPUUsage:             []float64{float64(m.PClusterFreqMHz), m.PClusterActive},
 		GPUUsage:              m.GPUActive,
 		GPUMetrics:            HeadlessGPUMetrics{FreqMHz: int(m.GPUFreqMHz), ActivePercent: m.GPUActive},
+		GPUs:                  m.PerGPU,
 		TFLOPsFP32:            fp32TFLOPs,
 		TFLOPsFP16:            fp16TFLOPs,
 		DisplayFPS:            fpsMetrics.FPS,

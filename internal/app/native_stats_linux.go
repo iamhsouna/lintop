@@ -323,9 +323,9 @@ type GPUProcessStat struct {
 // nvidia-smi in a directly comparable counter.
 func GetGPUProcessStats() map[int]uint64 { return nil }
 
-func GetGPUCoreCountFast() int { return len(queryNvidiaGPUs()) }
+func GetGPUCoreCountFast() int { return len(queryAllGPUs()) }
 
-func GetMaxGPUFrequency() int { return nvidiaMaxFreqMHz() }
+func GetMaxGPUFrequency() int { return maxGPUFreqMHz() }
 
 // ---- Thunderbolt / USB / Storage (Linux versions of the IOKit queries) ----
 
