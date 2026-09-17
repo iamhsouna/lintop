@@ -1,0 +1,74 @@
+version: 2
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    binary: "{{ .ProjectName }}"
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+brews:
+  - name: "{{ .ProjectName }}"
+    homepage: "https://github.com/metaspartan/mactop"
+    description: "Apple Silicon Monitor Top written in Go Lang"
+    url_template: "https://github.com/metaspartan/mactop/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    dependencies:
+      - name: macos
+    install: |
+      bin.install "{{ .ProjectName }}"
+    service: |
+      run [opt_bin/"{{ .ProjectName }}", "-p", "9101", "--headless"]
+      keep_alive true
+      log_path var/"log/{{ .ProjectName }}.log"
+      error_log_path var/"log/{{ .ProjectName }}.error.log"
+      process_type :background
+      nice 10
+    caveats: |
+      mactop requires macOS 12+, and runs exclusively on Apple Silicon.
+
+      To run mactop as a background service:
+        brew services start mactop
+
+      To view service error logs:
+        brew services logs mactop
+
+      Prometheus metrics will be available at:
+        http://localhost:9101/metrics
+
+      To change the Prometheus port:
+        1. brew services stop mactop
+        2. brew services edit mactop
+        3. Change 9101 to your desired port
+        4. brew services start mactop
+
+      Or run manually with a custom port:
+        mactop -p <PORT> --headless
+    repository:
+      owner: "metaspartan"
+      name: "mactop"

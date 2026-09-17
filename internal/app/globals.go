@@ -1,0 +1,345 @@
+package app
+
+import (
+	"log"
+	"os"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	ui "github.com/metaspartan/gotui/v5"
+	w "github.com/metaspartan/gotui/v5/widgets"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+// AppKit in the worker subprocesses requires goroutine 1 on thread 0; must
+// decide before flag.Parse, so scan os.Args.
+func init() {
+	for _, a := range os.Args[1:] {
+		if a == "--overlay-worker" || a == "-overlay-worker" ||
+			a == "--menubar-worker" || a == "-menubar-worker" {
+			runtime.LockOSThread()
+			return
+		}
+	}
+}
+
+var (
+	version                                                     = "v2.1.5"
+	cpuGauge, gpuGauge, memoryGauge, aneGauge                   *w.Gauge
+	// aneWidget / aneHistoryWidget are the drawables placed in layouts. When
+	// no Apple Neural Engine is present they point at blank placeholders so
+	// ANE panels are hidden entirely.
+	aneWidget, aneHistoryWidget ui.Drawable
+	mainBlock                                                   *ui.Block
+	modelText, PowerChart, NetworkInfo, helpText, infoParagraph *w.Paragraph
+	tbInfoParagraph                                             *w.Paragraph
+	fanStatusPanel, fanTempPanel, fanControlPanel               *w.Paragraph
+	grid                                                        *ui.Grid
+	processList                                                 *w.List
+	// Search state
+	searchMode        bool
+	searchText        string
+	filteredProcesses []ProcessMetrics
+	isFrozen          bool
+
+	// Modal state
+	confirmModal *w.Modal
+
+	sparkline, gpuSparkline           *w.Sparkline
+	sparklineGroup, gpuSparklineGroup *w.SparklineGroup
+
+	tbNetSparklineIn, tbNetSparklineOut *w.Sparkline
+	tbNetSparklineGroup                 *w.SparklineGroup
+
+	// StepChart widgets for History layout
+	gpuHistoryChart, powerHistoryChart, memoryHistoryChart, cpuHistoryChart *w.StepChart
+	memBWHistoryChart                                                       *w.StepChart
+	aneHistoryChart, bandwidthHistoryChart                                  *w.StepChart
+	socPowerHistoryChart                                                    *w.StepChart // Multi-line power for history_soc (CPU/GPU/ANE/DRAM)
+	ssdReadHistoryChart                                                     *w.StepChart // Combined SSD read bandwidth history (GB/s)
+	memoryUsedHistory                                                       = make([]float64, 100)
+	swapUsedHistory                                                         = make([]float64, 100)
+	cpuUsageHistory                                                         = make([]float64, 100)
+	powerUsageHistory                                                       = make([]float64, 100)
+	memBWReadHistory                                                        = make([]float64, 100)
+	memBWWriteHistory                                                       = make([]float64, 100)
+	maxMemBWSeen                                                            float64
+	// ANE estimate state shared between the sampler goroutine (latch writes in
+	// sampleSocMetrics) and the UI/menubar/overlay goroutines (reads + adaptive
+	// max updates in aneUtilizationPercent) — atomics to avoid a data race.
+	maxANEBWSeenBits    atomic.Uint64 // float64 bits; monotonic session max
+	aneBWModeLatched    atomic.Bool
+	aneResidencyLatched atomic.Bool // M5-class: ANEActive (PMP residency) seen this session
+	aneUsageHistory     = make([]float64, 100)
+	dramReadHistory     = make([]float64, 100)
+	dramWriteHistory    = make([]float64, 100)
+	aneReadBwHistory    = make([]float64, 100)
+	aneWriteBwHistory   = make([]float64, 100)
+
+	// previousLayout remembers the layout active before a direct switchToLayout
+	// jump (e.g. the 'a' ANE/BW history shortcut), so the key toggles back.
+	previousLayout string
+
+	// Per-component power histories for the SoC history layout (history_soc)
+	cpuPowerHistory, gpuPowerHistory, anePowerHistory, dramPowerHistory = make([]float64, 100), make([]float64, 100), make([]float64, 100), make([]float64, 100)
+
+	// Decaying-peak histories for the four SoC usage charts in history_soc layout
+	cpuPeakHistory, gpuPeakHistory, anePeakHistory, bwPeakHistory []float64
+
+	// Frequency-adjusted effective GPU load history (for history_soc layout only).
+	// Each sample is recorded with the GPU frequency active at the time it arrived.
+	// This prevents the entire history graph from jumping when frequency changes.
+	gpuEffectiveHistory []float64
+
+	// Additional histories for the split bottom section in history_soc
+	ssdReadHistory []float64 // SSD read bandwidth history in GB/s
+
+	cpuCoreWidget                 *CPUCoreWidget
+	powerValues                   = make([]float64, 35)
+	tbNetInValues                 = make([]float64, 100)
+	tbNetOutValues                = make([]float64, 100)
+	lastTBInBytes, lastTBOutBytes float64
+	lastUpdateTime                time.Time
+	stderrLogger                  = log.New(os.Stderr, "", 0)
+	showHelp, partyMode           = false, false
+	updateInterval                = 1000
+	done                          = make(chan struct{})
+	partyTicker                   *time.Ticker
+	lastCPUTimes                  []CPUUsage
+	firstRun                      = true
+	sortReverse                   = false
+	columns                       = []string{"PID", "USER", "VIRT", "RES", "CPU", "GPU", "MEM", "TIME", "CMD"}
+	selectedColumn                = 4
+	maxPowerSeen                  = 0.1
+	gpuValues                     = make([]float64, 100)
+
+	prometheusPort   string
+	headless         bool
+	headlessPretty   bool
+	headlessCount    int
+	headlessFormat   string
+	menubar          bool    // Run as menu bar status item
+	filterPID        int     // Monitor a specific process by PID (0 = all)
+	cliFgColor       string  // Foreground color from --foreground flag (used for = assignments)
+	cliBgColor       string  // Background color from --bg flag
+	cliLanguage      string  // Language override flag
+	resolvedLanguage string  // Final resolved language (CLI > env > config > system)
+	fanControl       bool    // Enable interactive fan speed control (requires --fan-control flag)
+	overlay          bool    // Show floating overlay HUD window
+	overlayWorker    bool    // Hidden: run as overlay worker process
+	overlaySections  string  // Comma-separated visible sections for overlay
+	overlayOpacity   float64 // Overlay window opacity (0.15-1.0)
+	dumpTemps        bool    // Diagnostic: dump all SMC temperature keys
+	dumpDebug        bool    // Diagnostic: dump IOReport/HID/SMC/NVMe debug info
+	dumpFPS          bool    // Diagnostic: dump CGDisplayStream FPS info
+	interruptChan    = make(chan struct{}, 10)
+
+	cachedTermWidth    int
+	cachedTermHeight   int
+	cachedTermMutex    sync.RWMutex
+	lastNetStats       NativeNetMetric
+	lastDiskStats      NativeDiskMetric
+	lastNetDiskTime    time.Time
+	netDiskMutex       sync.Mutex
+	killPending        bool
+	killPID            int
+	currentUser        string
+	lastProcesses      []ProcessMetrics
+	networkUnit        string
+	diskUnit           string
+	tempUnit           string
+	currentLayoutNum   int
+	totalLayouts       int
+	currentColorName   string
+	lastCPUMetrics     CPUMetrics
+	lastGPUMetrics     GPUMetrics
+	lastNetDiskMetrics NetDiskMetrics
+	lastActiveLayout   string = "default"
+	// Per-process GPU time tracking
+	lastGPUProcessStats     map[int]uint64
+	lastGPUProcessStatsTime time.Time
+	gpuProcessStatsMutex    sync.Mutex
+	cpuMetricsChan          = make(chan CPUMetrics, 1)
+	gpuMetricsChan          = make(chan GPUMetrics, 1)
+	netdiskMetricsChan      = make(chan NetDiskMetrics, 1)
+	tbNetStatsChan          = make(chan []ThunderboltNetStats, 1)
+	processMetricsChan      = make(chan []ProcessMetrics, 1)
+	ticker                  *time.Ticker
+
+	cachedHostname      string
+	cachedCurrentUser   string
+	cachedShell         string
+	cachedKernelVersion string
+	cachedOSVersion     string
+
+	cachedModelName  string
+	cachedSystemInfo SystemInfo
+	tbDeviceInfo     string
+	tbInfoMutex      sync.Mutex
+	infoScrollOffset int
+	helpScrollOffset int
+	currentBgIndex   int // Index for background color cycling
+
+	// Network link info cache (refreshed every 5 seconds)
+	cachedEthernetLinkInfo []EthernetLinkInfo
+	cachedWiFiLinkInfo     *WiFiLinkInfo
+	linkInfoLastUpdate     time.Time
+	linkInfoMutex          sync.RWMutex
+)
+
+var (
+	cpuUsage = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_cpu_usage_percent",
+			Help: "Current total CPU usage percentage",
+		},
+	)
+
+	ecoreUsage = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_ecore_usage_percent",
+			Help: "Current E-core CPU usage percentage",
+		},
+	)
+
+	pcoreUsage = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_pcore_usage_percent",
+			Help: "Current P-core CPU usage percentage",
+		},
+	)
+
+	scoreUsage = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_score_usage_percent",
+			Help: "Current S-core (Super) CPU usage percentage",
+		},
+	)
+
+	gpuUsage = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_usage_percent",
+			Help: "Current GPU usage percentage",
+		},
+	)
+
+	gpuFreqMHz = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_gpu_freq_mhz",
+			Help: "Current GPU frequency in MHz",
+		},
+	)
+	powerUsage = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_power_watts",
+			Help: "Current power usage in watts",
+		},
+		[]string{"component"},
+	)
+
+	socTemp = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_soc_temp_celsius",
+			Help: "Current SoC temperature in Celsius",
+		},
+	)
+	gpuTemp         = prometheus.NewGauge(prometheus.GaugeOpts{Name: "lintop_gpu_temp_celsius", Help: "GPU temperature in Celsius"})
+	fanRPM          = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "lintop_fan_rpm", Help: "Fan speed in RPM"}, []string{"fan_id", "fan_name"})
+	tempSensorGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "lintop_temp_sensor_celsius", Help: "Temperature sensor reading in Celsius"}, []string{"key", "name"})
+	thermalState    = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "lintop_thermal_state",
+		Help: "Current thermal state (0=Nominal, 1=Fair, 2=Serious, 3=Critical)",
+	},
+	)
+
+	memoryUsage = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_memory_gb",
+			Help: "Memory usage in GB",
+		},
+		[]string{"type"},
+	)
+
+	networkSpeed = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_network_kbytes_per_sec",
+			Help: "Network speed in KB/s",
+		},
+		[]string{"direction"},
+	)
+
+	diskIOSpeed = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_disk_kbytes_per_sec",
+			Help: "Disk I/O speed in KB/s",
+		},
+		[]string{"operation"},
+	)
+
+	diskIOPS = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_disk_iops",
+			Help: "Disk I/O operations per second",
+		},
+		[]string{"operation"},
+	)
+
+	// Thunderbolt network metrics
+	tbNetworkSpeed = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_thunderbolt_network_bytes_per_sec",
+			Help: "Thunderbolt network throughput in bytes per second",
+		},
+		[]string{"direction"},
+	)
+
+	// RDMA status metric
+	rdmaAvailable = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_rdma_available",
+			Help: "RDMA availability status (1=available, 0=unavailable)",
+		},
+	)
+
+	batteryPercent = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_battery_percent",
+			Help: "Battery charge percentage (0-100, -1 if no battery)",
+		},
+	)
+
+	batteryCharging = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "lintop_battery_charging",
+			Help: "1 if battery is charging, 0 otherwise",
+		},
+	)
+
+	dramBandwidth = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_dram_bandwidth_gbs",
+			Help: "DRAM bandwidth in GB/s",
+		},
+		[]string{"direction"},
+	)
+
+	// Per-core CPU usage metrics
+	cpuCoreUsage = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_cpu_core_usage_percent",
+			Help: "Per-core CPU usage percentage",
+		},
+		[]string{"core", "type"},
+	)
+
+	// System info metrics (static labels)
+	systemInfoGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lintop_system_info",
+			Help: "System information (value is always 1, labels contain info)",
+		},
+		[]string{"model", "core_count", "e_core_count", "p_core_count", "s_core_count", "gpu_core_count"},
+	)
+)

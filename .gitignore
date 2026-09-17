@@ -1,0 +1,9 @@
+/logs
+/mactop
+mactop
+/lintop
+lintop
+dist
+.DS_Store
+.idea/
+.ai/

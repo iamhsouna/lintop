@@ -1,0 +1,234 @@
+package app
+
+import (
+	"fmt"
+	"math"
+	"os"
+	"strings"
+	"syscall"
+
+	ui "github.com/metaspartan/gotui/v5"
+	w "github.com/metaspartan/gotui/v5/widgets"
+)
+
+// newBlankWidget returns an invisible drawable used to hide panels on hardware
+// that does not support them (e.g. the ANE on Linux without Apple Silicon).
+func newBlankWidget() ui.Drawable {
+	p := w.NewParagraph()
+	p.Border = false
+	p.Text = ""
+	return p
+}
+
+// firstEnv returns the first non-empty environment variable from names.
+func firstEnv(names ...string) string {
+	for _, n := range names {
+		if v := os.Getenv(n); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func UpdateCachedTerminalDimensions(w, h int) {
+	cachedTermMutex.Lock()
+	defer cachedTermMutex.Unlock()
+	cachedTermWidth = w
+	cachedTermHeight = h
+}
+
+func GetCachedTerminalDimensions() (int, int) {
+	cachedTermMutex.RLock()
+	if cachedTermWidth != 0 && cachedTermHeight != 0 {
+		width, height := cachedTermWidth, cachedTermHeight
+		cachedTermMutex.RUnlock()
+		return width, height
+	}
+	cachedTermMutex.RUnlock()
+
+	// Fallback or lazy init
+	w, h := ui.TerminalDimensions()
+	cachedTermMutex.Lock()
+	cachedTermWidth = w
+	cachedTermHeight = h
+	cachedTermMutex.Unlock()
+	return w, h
+}
+
+func StderrToLogfile(logfile *os.File) {
+	syscall.Dup2(int(logfile.Fd()), 2)
+}
+
+func parseTimeString(timeStr string) float64 {
+	var days, hours, minutes, seconds int
+
+	// Try full format first: "01d02h30m45s"
+	n, err := fmt.Sscanf(timeStr, "%dd%dh%dm%ds", &days, &hours, &minutes, &seconds)
+	if n == 4 && err == nil {
+		return float64(days*86400) + float64(hours*3600) + float64(minutes*60) + float64(seconds)
+	}
+
+	// Try without days: "02h30m45s"
+	n, err = fmt.Sscanf(timeStr, "%dh%dm%ds", &hours, &minutes, &seconds)
+	if n == 3 && err == nil {
+		return float64(hours*3600) + float64(minutes*60) + float64(seconds)
+	}
+
+	// Try without days and hours: "30m45s"
+	n, err = fmt.Sscanf(timeStr, "%dm%ds", &minutes, &seconds)
+	if n == 2 && err == nil {
+		return float64(minutes*60) + float64(seconds)
+	}
+
+	// Try seconds only: "45s"
+	n, err = fmt.Sscanf(timeStr, "%ds", &seconds)
+	if n == 1 && err == nil {
+		return float64(seconds)
+	}
+
+	return 0.0
+}
+
+func formatTime(seconds float64) string {
+	days := int(seconds) / 86400
+	hours := (int(seconds) / 3600) % 24
+	minutes := (int(seconds) / 60) % 60
+	secs := int(seconds) % 60
+
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%dd%02dh%02dm%02ds", days, hours, minutes, secs)
+	case hours > 0:
+		return fmt.Sprintf("%dh%02dm%02ds", hours, minutes, secs)
+	default:
+		return fmt.Sprintf("%dm%02ds", minutes, secs)
+	}
+}
+
+func formatMemorySize(kb int64) string {
+	const (
+		MB = 1024
+		GB = MB * 1024
+		TB = GB * 1024
+	)
+	switch {
+	case kb >= TB:
+		return fmt.Sprintf("%.1fT", float64(kb)/float64(TB))
+	case kb >= GB:
+		return fmt.Sprintf("%.1fG", float64(kb)/float64(GB))
+	case kb >= MB:
+		return fmt.Sprintf("%dM", kb/MB)
+	default:
+		return fmt.Sprintf("%dK", kb)
+	}
+}
+
+func formatResMemorySize(kb int64) string {
+	const (
+		MB = 1024
+		GB = MB * 1024
+	)
+	switch {
+	case kb >= GB:
+		return fmt.Sprintf("%.1fG", float64(kb)/float64(GB))
+	case kb >= MB:
+		return fmt.Sprintf("%dM", kb/MB)
+	default:
+		return fmt.Sprintf("%dK", kb)
+	}
+}
+
+func formatBytes(val float64, unitType string) string {
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+
+	targetUnit := strings.ToLower(unitType)
+	if targetUnit == "" {
+		targetUnit = "auto"
+	}
+
+	value := val
+	suffix := ""
+
+	switch targetUnit {
+	case "byte":
+		suffix = "B"
+	case "kb":
+		value /= 1024
+		suffix = "KB"
+	case "mb":
+		value /= 1024 * 1024
+		suffix = "MB"
+	case "gb":
+		value /= 1024 * 1024 * 1024
+		suffix = "GB"
+	case "auto":
+		i := 0
+		for value >= 1000 && i < len(units)-1 {
+			value /= 1024
+			i++
+		}
+		suffix = units[i]
+	default:
+		i := 0
+		for value >= 1000 && i < len(units)-1 {
+			value /= 1024
+			i++
+		}
+		suffix = units[i]
+	}
+
+	return fmt.Sprintf("%.1f%s", value, suffix)
+}
+
+// formatBytesDecimal formats a raw byte count using SI (1000-based) units.
+// macOS Finder, Disk Utility, and storage vendors all report disk sizes in
+// decimal — an "8TB" drive is 8 × 10^12 bytes, not 8 × 2^40 — so disk usage
+// should use this rather than formatBytes (which is 1024-based).
+func formatBytesDecimal(val float64, unitType string) string {
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+
+	targetUnit := strings.ToLower(unitType)
+	if targetUnit == "" {
+		targetUnit = "auto"
+	}
+
+	value := val
+	suffix := ""
+
+	switch targetUnit {
+	case "byte":
+		suffix = "B"
+	case "kb":
+		value /= 1000
+		suffix = "KB"
+	case "mb":
+		value /= 1000 * 1000
+		suffix = "MB"
+	case "gb":
+		value /= 1000 * 1000 * 1000
+		suffix = "GB"
+	default:
+		i := 0
+		for value >= 1000 && i < len(units)-1 {
+			value /= 1000
+			i++
+		}
+		suffix = units[i]
+	}
+
+	return fmt.Sprintf("%.1f%s", value, suffix)
+}
+
+func formatTemp(celsius float64) string {
+	if strings.ToLower(tempUnit) == "fahrenheit" {
+		f := (celsius * 9 / 5) + 32
+		return fmt.Sprintf("%d°F", int(math.Round(f)))
+	}
+	return fmt.Sprintf("%d°C", int(math.Round(celsius)))
+}
+
+// isCompactLayout returns true if the current layout is one of the compact layouts (tiny, micro, nano, pico)
+func isCompactLayout() bool {
+	layout := currentConfig.DefaultLayout
+	return layout == LayoutTiny || layout == LayoutMicro || layout == LayoutNano || layout == LayoutPico
+}
