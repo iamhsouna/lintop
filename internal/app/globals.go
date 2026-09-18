@@ -26,8 +26,8 @@ func init() {
 }
 
 var (
-	version                                   = "v2.2.1"
-	cpuGauge, gpuGauge, memoryGauge, aneGauge *w.Gauge
+	version                                                 = "v2.2.1"
+	cpuGauge, gpuGauge, memoryGauge, aneGauge, gpuTempGauge *w.Gauge
 	// selectedGPU chooses which GPU the primary gauges track. multiGpuGauges
 	// holds one gauge per detected GPU for the multi_gpu layout.
 	selectedGPU    int

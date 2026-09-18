@@ -70,17 +70,18 @@ func setupUI() {
 	processList.SelectedRow = 0
 
 	gauges := []*w.Gauge{
-		w.NewGauge(), w.NewGauge(), w.NewGauge(), w.NewGauge(),
+		w.NewGauge(), w.NewGauge(), w.NewGauge(), w.NewGauge(), w.NewGauge(),
 	}
 	for _, gauge := range gauges {
 		gauge.Percent = 0
 	}
-	cpuGauge, gpuGauge, memoryGauge, aneGauge = gauges[0], gauges[1], gauges[2], gauges[3]
+	cpuGauge, gpuGauge, memoryGauge, aneGauge, gpuTempGauge = gauges[0], gauges[1], gauges[2], gauges[3], gauges[4]
 
 	cpuGauge.Title = i18n.T("TUI_Loading")
 	gpuGauge.Title = i18n.T("TUI_GPUUsage")
 	memoryGauge.Title = i18n.T("TUI_MemoryUsage")
 	aneGauge.Title = i18n.T("TUI_ANEUsage")
+	gpuTempGauge.Title = i18n.T("TempCategory_GPU")
 
 	initMultiGPUGauges()
 
@@ -1709,6 +1710,8 @@ func updateGPUUI(gpuMetrics GPUMetrics) {
 	}
 	gpuGauge.Percent = int(gpuMetrics.ActivePercent)
 
+	updateGPUTempGauge(gpuMetrics)
+
 	for i := 0; i < len(gpuValues)-1; i++ {
 		gpuValues[i] = gpuValues[i+1]
 		gpuPeakHistory[i] = gpuPeakHistory[i+1]
@@ -1768,6 +1771,29 @@ func updateGPUUI(gpuMetrics GPUMetrics) {
 	if currentConfig.Theme == "1977" {
 		update1977GaugeColors()
 	}
+}
+
+// updateGPUTempGauge fills the secondary gauge slot on machines without an
+// Apple Neural Engine, showing the primary GPU's temperature.
+func updateGPUTempGauge(gpuMetrics GPUMetrics) {
+	if gpuTempGauge == nil {
+		return
+	}
+	temp := float64(gpuMetrics.Temp)
+	if temp <= 0 {
+		gpuTempGauge.Title = fmt.Sprintf("%s %s", i18n.T("TempCategory_GPU"), i18n.T("Info_NotAvailable"))
+		gpuTempGauge.Percent = 0
+		return
+	}
+	pct := int(temp)
+	if pct > 100 {
+		pct = 100
+	}
+	if pct < 0 {
+		pct = 0
+	}
+	gpuTempGauge.Percent = pct
+	gpuTempGauge.Title = fmt.Sprintf("%s %s", i18n.T("TempCategory_GPU"), formatTemp(temp))
 }
 
 // updateMultiGPUGauges refreshes the per-GPU panes used by the multi_gpu layout.

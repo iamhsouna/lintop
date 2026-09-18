@@ -211,6 +211,7 @@ func update1977GaugeColors() {
 	styleGauge(gpuGauge, ui.ColorMagenta, SecondaryTextColor)
 	styleGauge(memoryGauge, ui.ColorBlue, SecondaryTextColor)
 	styleGauge(aneGauge, ui.ColorRed, SecondaryTextColor)
+	styleGauge(gpuTempGauge, ui.ColorRed, SecondaryTextColor)
 	styleMultiGPUGauges(ui.ColorMagenta, SecondaryTextColor)
 }
 
@@ -226,6 +227,7 @@ func applyThemeToGauges(color ui.Color) {
 	styleGauge(gpuGauge, color, SecondaryTextColor)
 	styleGauge(memoryGauge, color, SecondaryTextColor)
 	styleGauge(aneGauge, color, SecondaryTextColor)
+	styleGauge(gpuTempGauge, color, SecondaryTextColor)
 	styleMultiGPUGauges(color, SecondaryTextColor)
 }
 
@@ -234,6 +236,7 @@ func applyCatppuccinThemeToGauges(palette *CatppuccinPalette) {
 	styleGauge(gpuGauge, palette.Blue, palette.Subtext0)      // GPU = Blue (info/secondary compute)
 	styleGauge(memoryGauge, palette.Yellow, palette.Subtext0) // Memory = Yellow (resource usage)
 	styleGauge(aneGauge, palette.Lavender, palette.Subtext0)  // ANE = Lavender (AI/neural)
+	styleGauge(gpuTempGauge, palette.Red, palette.Subtext0)   // GPU Temp = Red (heat)
 	styleMultiGPUGauges(palette.Blue, palette.Subtext0)
 }
 
@@ -253,6 +256,7 @@ func applyCustomGaugeColors(theme *CustomThemeConfig, fgColor ui.Color) {
 	styleGauge(gpuGauge, resolveCustomColor(theme.GPU, fgColor), SecondaryTextColor)
 	styleGauge(memoryGauge, resolveCustomColor(theme.Memory, fgColor), SecondaryTextColor)
 	styleGauge(aneGauge, resolveCustomColor(theme.ANE, fgColor), SecondaryTextColor)
+	styleGauge(gpuTempGauge, resolveCustomColor(theme.GPU, fgColor), SecondaryTextColor)
 	styleMultiGPUGauges(resolveCustomColor(theme.GPU, fgColor), SecondaryTextColor)
 }
 
@@ -760,7 +764,7 @@ func applyBackgroundToBlocks(bgColor ui.Color) {
 }
 
 func applyBackgroundToGauges(bgColor ui.Color) {
-	gauges := []*w.Gauge{cpuGauge, gpuGauge, memoryGauge, aneGauge}
+	gauges := []*w.Gauge{cpuGauge, gpuGauge, memoryGauge, aneGauge, gpuTempGauge}
 	for _, g := range gauges {
 		if g != nil {
 			g.BackgroundColor = bgColor

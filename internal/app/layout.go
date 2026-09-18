@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	ui "github.com/metaspartan/gotui/v5"
+	w "github.com/metaspartan/gotui/v5/widgets"
 	"lintop/internal/i18n"
 )
 
@@ -70,12 +71,25 @@ func equalCols(items ...any) []any {
 	return cols
 }
 
-// gaugeItems returns the standard gauge set, appending the ANE gauge only when
-// an Apple Neural Engine is actually present.
+// secondaryGauge returns the gauge that fills the secondary gauge slot: the
+// ANE gauge on Apple Silicon, or the GPU temperature gauge on machines without
+// an Apple Neural Engine but with a GPU.
+func secondaryGauge() (*w.Gauge, bool) {
+	if hasANE() {
+		return aneGauge, true
+	}
+	if showGPUTempGauge() {
+		return gpuTempGauge, true
+	}
+	return nil, false
+}
+
+// gaugeItems returns the standard gauge set, appending the secondary gauge
+// (ANE usage or GPU temperature) when one is available.
 func gaugeItems(base ...any) []any {
 	items := append([]any{}, base...)
-	if hasANE() {
-		items = append(items, aneGauge)
+	if g, ok := secondaryGauge(); ok {
+		items = append(items, g)
 	}
 	return items
 }
@@ -201,8 +215,8 @@ func setLayoutGrid(layoutName string) {
 			{1.0, cpuGauge},
 			{1.0, gpuGauge},
 		}
-		if hasANE() {
-			leftSpecs = append(leftSpecs, rowSpec{1.0, aneGauge})
+		if g, ok := secondaryGauge(); ok {
+			leftSpecs = append(leftSpecs, rowSpec{1.0, g})
 		}
 		leftSpecs = append(leftSpecs,
 			rowSpec{1.5, memoryGauge},
@@ -246,10 +260,10 @@ func setLayoutGrid(layoutName string) {
 		)
 	case LayoutGaugesOnly:
 		var gpuRow any
-		if hasANE() {
+		if g, ok := secondaryGauge(); ok {
 			gpuRow = ui.NewRow(1.0/3,
 				ui.NewCol(1.0/2, gpuGauge),
-				ui.NewCol(1.0/2, aneGauge),
+				ui.NewCol(1.0/2, g),
 			)
 		} else {
 			gpuRow = ui.NewRow(1.0/3, ui.NewCol(1.0, gpuGauge))
@@ -324,8 +338,8 @@ func setLayoutGrid(layoutName string) {
 			{1.0, gpuGauge},
 			{1.0, memoryGauge},
 		}
-		if hasANE() {
-			specs = append(specs, rowSpec{1.0, aneGauge})
+		if g, ok := secondaryGauge(); ok {
+			specs = append(specs, rowSpec{1.0, g})
 		}
 		grid.Set(
 			ui.NewRow(1.0,
@@ -348,8 +362,8 @@ func setLayoutGrid(layoutName string) {
 			ui.NewCol(1.0/2, sparklineGroup),
 		)
 		leftSpecs := []rowSpec{}
-		if hasANE() {
-			leftSpecs = append(leftSpecs, rowSpec{1.0, aneGauge})
+		if g, ok := secondaryGauge(); ok {
+			leftSpecs = append(leftSpecs, rowSpec{1.0, g})
 		}
 		leftSpecs = append(leftSpecs, rowSpec{1.0, contentRow})
 		grid.Set(
@@ -379,8 +393,8 @@ func setCompactLayoutGrid(layoutName string) {
 	case LayoutTiny:
 		// Compact vertical with all key metrics + mini process list
 		row2 := []any{memoryGauge}
-		if hasANE() {
-			row2 = append(row2, aneGauge)
+		if g, ok := secondaryGauge(); ok {
+			row2 = append(row2, g)
 		}
 		grid.Set(
 			ui.NewRow(1.0/4, equalCols(cpuGauge, gpuGauge)...),
@@ -396,8 +410,8 @@ func setCompactLayoutGrid(layoutName string) {
 	case LayoutMicro:
 		// Ultra-compact gauges + sparklines, no process list
 		row2 := []any{memoryGauge}
-		if hasANE() {
-			row2 = append(row2, aneGauge)
+		if g, ok := secondaryGauge(); ok {
+			row2 = append(row2, g)
 		}
 		grid.Set(
 			ui.NewRow(1.0/4, equalCols(cpuGauge, gpuGauge)...),
@@ -414,8 +428,8 @@ func setCompactLayoutGrid(layoutName string) {
 	case LayoutNano:
 		// Dense info panel + gauges + mini process list
 		row3 := []any{PowerChart, NetworkInfo}
-		if hasANE() {
-			row3 = append([]any{aneGauge}, row3...)
+		if g, ok := secondaryGauge(); ok {
+			row3 = append([]any{g}, row3...)
 		}
 		grid.Set(
 			ui.NewRow(1.0/4,
